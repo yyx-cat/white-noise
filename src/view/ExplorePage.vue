@@ -21,12 +21,18 @@ import { IonPage, IonHeader, IonToolbar, IonTitle, IonContent } from '@ionic/vue
 </template>
 
 <style scoped>
+/* 页面内容区背景色：蓝色，用于验证路由切换 */
+ion-content {
+  --background: #1890ff;
+}
+
 /* 占位文本样式 */
 .placeholder {
   display: flex;
   align-items: center;
   justify-content: center;
   height: 100%;
-  color: var(--text);
+  color: #ffffff;
+  font-size: 20px;
 }
 </style>
