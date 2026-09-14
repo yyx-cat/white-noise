@@ -68,6 +68,7 @@ import { Swiper, SwiperSlide } from 'swiper/vue'
 import { Autoplay, Pagination } from 'swiper/modules'
 import 'swiper/css'
 import 'swiper/css/pagination'
+import { mixerStore } from '@/store/mixer'
 
 // 注册 Swiper 模块
 const swiperModules = [Autoplay, Pagination]
@@ -116,6 +117,8 @@ function togglePlay(sound) {
   } else {
     playingId.value = sound.id
     console.log('点击了:', sound.name)
+    // ③ 点击时自动加入混音台
+    mixerStore.addSound(sound)
   }
 }
 </script>

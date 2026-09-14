@@ -2,9 +2,11 @@
 import { createRouter, createWebHistory } from '@ionic/vue-router'
 import HomePage from '@/view/HomePage.vue'
 import ExplorePage from '@/view/ExplorePage.vue'
+import MixerPage from '@/view/MixerPage.vue'
 import NotificationsPage from '@/view/NotificationsPage.vue'
 import ProfilePage from '@/view/ProfilePage.vue'
 import TabsPage from '@/view/TabsPage.vue'
+
 
 /**
  * 创建应用路由实例
@@ -33,6 +35,10 @@ export function createAppRouter() {
         {
           path: 'explore',
           component: ExplorePage,
+        },
+        {
+          path: 'mixer',
+          component: MixerPage,
         },
         {
           path: 'notifications',
