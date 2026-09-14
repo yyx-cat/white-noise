@@ -7,19 +7,22 @@
     </ion-header>
 
     <ion-content :fullscreen="true">
-      <!-- ① 顶部轮播 Banner -->
+      <!-- ① 顶部自动轮播 Banner -->
       <div class="banner-wrap">
-        <div class="banner-scroll">
-          <div
-            v-for="(banner, index) in banners"
-            :key="index"
-            class="banner-item"
-            :style="{ background: banner.bg }"
-          >
-            <div class="banner-emoji">{{ banner.emoji }}</div>
-            <div class="banner-text">{{ banner.title }}</div>
-          </div>
-        </div>
+        <swiper
+          :modules="swiperModules"
+          :autoplay="{ delay: 3000, disableOnInteraction: false }"
+          :loop="true"
+          :pagination="{ clickable: true }"
+          class="banner-swiper"
+        >
+          <swiper-slide v-for="(banner, index) in banners" :key="index">
+            <div class="banner-item" :style="{ background: banner.bg }">
+              <div class="banner-emoji">{{ banner.emoji }}</div>
+              <div class="banner-text">{{ banner.title }}</div>
+            </div>
+          </swiper-slide>
+        </swiper>
       </div>
 
       <!-- 分类 Tab 栏 -->
@@ -60,6 +63,14 @@
 <script setup>
 import { ref, computed } from 'vue'
 import { IonPage, IonHeader, IonToolbar, IonTitle, IonContent } from '@ionic/vue'
+// 引入 Swiper 组件和需要的模块
+import { Swiper, SwiperSlide } from 'swiper/vue'
+import { Autoplay, Pagination } from 'swiper/modules'
+import 'swiper/css'
+import 'swiper/css/pagination'
+
+// 注册 Swiper 模块
+const swiperModules = [Autoplay, Pagination]
 
 // 顶部轮播 Banner 数据
 const banners = [
@@ -72,7 +83,7 @@ const banners = [
 const categories = ['全部', '自然', '生活', '冥想', '专注']
 const activeCategory = ref('全部')
 
-// ③ 假数据：写死 8-12 个音效对象
+// ③ 假数据：写死 12 个音效对象
 const sounds = [
   { id: 1, emoji: '🌧️', name: '雨声', category: '自然' },
   { id: 2, emoji: '⛈️', name: '雷雨', category: '自然' },
@@ -88,7 +99,7 @@ const sounds = [
   { id: 12, emoji: '🎵', name: '轻音乐', category: '专注' },
 ]
 
-// 当前正在播放的音效 id（null 表示都没播）
+// 当前正在播放的音效 id
 const playingId = ref(null)
 
 // 根据分类筛选卡片
@@ -97,7 +108,7 @@ const filteredSounds = computed(() => {
   return sounds.filter((s) => s.category === activeCategory.value)
 })
 
-// ④ 点击按钮：切换播放/暂停，并在控制台打印日志
+// ④ 点击按钮：切换播放/暂停，并打印日志
 function togglePlay(sound) {
   if (playingId.value === sound.id) {
     playingId.value = null
@@ -110,25 +121,18 @@ function togglePlay(sound) {
 </script>
 
 <style scoped>
-/* Banner 横向滚动 */
+/* Banner 容器 */
 .banner-wrap {
   padding: 12px 16px 0;
 }
-.banner-scroll {
-  display: flex;
-  gap: 12px;
-  overflow-x: auto;
-  scroll-snap-type: x mandatory;
-  -webkit-overflow-scrolling: touch;
-}
-.banner-scroll::-webkit-scrollbar {
-  display: none;
+.banner-swiper {
+  border-radius: 16px;
+  overflow: hidden;
+  /* 让分页点显示在图片上方 */
+  --swiper-pagination-bottom: 8px;
 }
 .banner-item {
-  flex: 0 0 85%;
   height: 140px;
-  border-radius: 16px;
-  scroll-snap-align: start;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -142,6 +146,15 @@ function togglePlay(sound) {
   margin-top: 8px;
   font-size: 16px;
   font-weight: 600;
+}
+
+/* 分页点颜色 */
+.banner-swiper :deep(.swiper-pagination-bullet) {
+  background: #fff;
+  opacity: 0.6;
+}
+.banner-swiper :deep(.swiper-pagination-bullet-active) {
+  opacity: 1;
 }
 
 /* 分类 Tab 栏 */
@@ -169,7 +182,7 @@ function togglePlay(sound) {
   color: #fff;
 }
 
-/* 卡片网格：两列 */
+/* 卡片网格 */
 .card-grid {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
@@ -184,7 +197,6 @@ function togglePlay(sound) {
   display: flex;
   flex-direction: column;
   align-items: center;
-  position: relative;
 }
 .card-emoji {
   font-size: 36px;
