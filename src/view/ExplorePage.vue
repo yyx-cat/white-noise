@@ -69,6 +69,10 @@ import { Autoplay, Pagination } from 'swiper/modules'
 import 'swiper/css'
 import 'swiper/css/pagination'
 import { mixerStore } from '@/store/mixer'
+import { useAudio } from '@/composables/useAudio'
+
+// 获取音频引擎实例（与 playingId、categories 处于同一层作用域）
+const audio = useAudio()
 
 // 注册 Swiper 模块
 const swiperModules = [Autoplay, Pagination]
@@ -114,9 +118,13 @@ function togglePlay(sound) {
   if (playingId.value === sound.id) {
     playingId.value = null
     console.log('暂停了:', sound.name)
+    // 调用音频引擎暂停写死的测试音频
+    audio.pause(audio.TEST_URL)
   } else {
     playingId.value = sound.id
     console.log('点击了:', sound.name)
+    // 调用音频引擎播放写死的测试音频（play 为 async，本阶段不 await 也能出声）
+    audio.play(audio.TEST_URL)
     // ③ 点击时自动加入混音台
     mixerStore.addSound(sound)
   }
