@@ -1,9 +1,7 @@
 // 路由配置模块：负责创建应用的路由实例并定义底部 4 个 Tab 的路由表
 import { createRouter, createWebHistory } from '@ionic/vue-router'
-import HomePage from '@/view/HomePage.vue'
 import ExplorePage from '@/view/ExplorePage.vue'
 import MixerPage from '@/view/MixerPage.vue'
-import NotificationsPage from '@/view/NotificationsPage.vue'
 import ProfilePage from '@/view/ProfilePage.vue'
 import TabsPage from '@/view/TabsPage.vue'
 
@@ -18,7 +16,7 @@ export function createAppRouter() {
   const routes = [
     {
       path: '/',
-      redirect: '/tabs/home',
+      redirect: '/tabs/explore',
     },
     {
       path: '/tabs/',
@@ -29,20 +27,12 @@ export function createAppRouter() {
           redirect: '/tabs/home',
         },
         {
-          path: 'home',
-          component: HomePage,
-        },
-        {
           path: 'explore',
           component: ExplorePage,
         },
         {
           path: 'mixer',
           component: MixerPage,
-        },
-        {
-          path: 'notifications',
-          component: NotificationsPage,
         },
         {
           path: 'profile',

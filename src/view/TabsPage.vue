@@ -14,7 +14,7 @@ import {
   IonRouterOutlet,
 } from '@ionic/vue'
 // 引入底部 Tab 图标
-import { homeOutline, compassOutline, optionsOutline, notificationsOutline, personOutline } from 'ionicons/icons'
+import { compassOutline, optionsOutline, personOutline } from 'ionicons/icons'
 </script>
 
 <template>
@@ -25,11 +25,6 @@ import { homeOutline, compassOutline, optionsOutline, notificationsOutline, pers
 
       <!-- 底部 Tab 栏 -->
       <ion-tab-bar slot="bottom">
-        <!-- 首页 Tab -->
-        <ion-tab-button tab="home" href="/tabs/home">
-          <ion-icon :icon="homeOutline" />
-          <ion-label>首页</ion-label>
-        </ion-tab-button>
 
         <!-- 探索 Tab -->
         <ion-tab-button tab="explore" href="/tabs/explore">
@@ -41,12 +36,6 @@ import { homeOutline, compassOutline, optionsOutline, notificationsOutline, pers
         <ion-tab-button tab="mixer" href="/tabs/mixer">
           <ion-icon :icon="optionsOutline" />
           <ion-label>混音台</ion-label>
-        </ion-tab-button>
-
-        <!-- 通知 Tab -->
-        <ion-tab-button tab="notifications" href="/tabs/notifications">
-          <ion-icon :icon="notificationsOutline" />
-          <ion-label>通知</ion-label>
         </ion-tab-button>
 
         <!-- 我的 Tab -->

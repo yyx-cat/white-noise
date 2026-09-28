@@ -74,7 +74,7 @@ import 'swiper/css/pagination'
 // 音效元数据唯一来源：卡片列表与分类均从此取，不再本地写死
 import { sounds, getCategories } from '@/data/sounds'
 // 双写协调层：UI 只调用 bridge，由它统一双写 audioStore / mixerStore 并驱动音频引擎
-import { addSoundToMixer } from '@/store/bridge'
+import { addSoundToMixer, toggleMixerPlay  } from '@/store/bridge'
 // Pinia 音频状态：播放中判断（图标切换）全部以此为准
 import { useAudioStore } from '@/store/audio'
 
@@ -104,7 +104,16 @@ const filteredSounds = computed(() => {
 // ④ 点击按钮：经协调层加入混音台并叠加播放（addSoundToMixer 内部双写两个 Store，
 // 走 audioStore.playMultiple 混音模式——多音效共存互不打断，点击同时满足用户手势要求）
 function togglePlay(sound) {
-  addSoundToMixer(sound)
+  if (audioStore.isPlaying(sound.id)) {
+    // 正在播 → 只暂停这一个，其他继续
+    toggleMixerPlay(sound.id)
+  } else if (audioStore.isPaused(sound.id)) {
+    // 已暂停 → 续播
+    toggleMixerPlay(sound.id)
+  } else {
+    // 没播过 → 加入混音台并开始播
+    addSoundToMixer(sound)
+  }
 }
 </script>
 
