@@ -2,6 +2,8 @@
 import { createApp } from 'vue'
 // 引入 Ionic Vue 插件
 import { IonicVue } from '@ionic/vue'
+// 引入 Pinia 状态管理
+import { createPinia } from 'pinia'
 // 引入 Ionic 基础样式（全屏布局与组件样式）
 import '@ionic/vue/css/core.css'
 
@@ -12,12 +14,16 @@ import App from './App.vue'
 // 引入路由实例
 import router from './router'
 
+// 创建 Pinia 实例（现阶段仅 audioStore 使用；mixerStore 暂继续用 reactive 方案）
+const pinia = createPinia()
+
 /**
  * 创建并挂载应用
- * 依次注册 Ionic 插件与路由，最后挂载到 #app 节点
+ * 依次注册 Ionic 插件、Pinia 与路由，最后挂载到 #app 节点
  */
 const app = createApp(App)
   .use(IonicVue)
+  .use(pinia)
   .use(router)
 
 // 路由就绪后再挂载，避免首屏闪烁

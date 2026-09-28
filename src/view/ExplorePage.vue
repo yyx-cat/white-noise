@@ -45,14 +45,17 @@
           :key="sound.id"
           class="sound-card"
         >
-          <div class="card-emoji">{{ sound.emoji }}</div>
+          <div class="card-emoji">{{ sound.icon }}</div>
           <div class="card-name">{{ sound.name }}</div>
           <button
             class="play-btn"
-            :class="{ playing: playingId === sound.id }"
+            :class="{
+              playing: audioStore.isPlaying(sound.id),
+              loading: audioStore.isLoading(sound.id),
+            }"
             @click="togglePlay(sound)"
           >
-            {{ playingId === sound.id ? '⏸' : '▶' }}
+            {{ audioStore.isPlaying(sound.id) ? '⏸' : audioStore.isLoading(sound.id) ? '⏳' : '▶' }}
           </button>
         </div>
       </div>
@@ -68,11 +71,15 @@ import { Swiper, SwiperSlide } from 'swiper/vue'
 import { Autoplay, Pagination } from 'swiper/modules'
 import 'swiper/css'
 import 'swiper/css/pagination'
-import { mixerStore } from '@/store/mixer'
-import { useAudio } from '@/composables/useAudio'
+// 音效元数据唯一来源：卡片列表与分类均从此取，不再本地写死
+import { sounds, getCategories } from '@/data/sounds'
+// 双写协调层：UI 只调用 bridge，由它统一双写 audioStore / mixerStore 并驱动音频引擎
+import { addSoundToMixer } from '@/store/bridge'
+// Pinia 音频状态：播放中判断（图标切换）全部以此为准
+import { useAudioStore } from '@/store/audio'
 
-// 获取音频引擎实例（与 playingId、categories 处于同一层作用域）
-const audio = useAudio()
+// 音频状态 Store 实例（与 categories 处于同一层作用域）
+const audioStore = useAudioStore()
 
 // 注册 Swiper 模块
 const swiperModules = [Autoplay, Pagination]
@@ -84,28 +91,9 @@ const banners = [
   { emoji: '🔥', title: '篝火噼啪', bg: 'linear-gradient(135deg, #f2994a, #f2c94c)' },
 ]
 
-// 分类 Tab
-const categories = ['全部', '自然', '生活', '冥想', '专注']
+// 分类 Tab（从 sounds.js 元数据动态生成，"全部"固定在最前）
+const categories = getCategories()
 const activeCategory = ref('全部')
-
-// ③ 假数据：写死 12 个音效对象
-const sounds = [
-  { id: 1, emoji: '🌧️', name: '雨声', category: '自然' },
-  { id: 2, emoji: '⛈️', name: '雷雨', category: '自然' },
-  { id: 3, emoji: '🌊', name: '海浪', category: '自然' },
-  { id: 4, emoji: '🍃', name: '风吹树叶', category: '自然' },
-  { id: 5, emoji: '🔥', name: '篝火', category: '生活' },
-  { id: 6, emoji: '☕', name: '咖啡馆', category: '生活' },
-  { id: 7, emoji: '🚂', name: '火车车厢', category: '生活' },
-  { id: 8, emoji: '🧘', name: '冥想钵音', category: '冥想' },
-  { id: 9, emoji: '🕉️', name: '诵经', category: '冥想' },
-  { id: 10, emoji: '💻', name: '键盘敲击', category: '专注' },
-  { id: 11, emoji: '📖', name: '翻书声', category: '专注' },
-  { id: 12, emoji: '🎵', name: '轻音乐', category: '专注' },
-]
-
-// 当前正在播放的音效 id
-const playingId = ref(null)
 
 // 根据分类筛选卡片
 const filteredSounds = computed(() => {
@@ -113,21 +101,10 @@ const filteredSounds = computed(() => {
   return sounds.filter((s) => s.category === activeCategory.value)
 })
 
-// ④ 点击按钮：切换播放/暂停，并打印日志
+// ④ 点击按钮：经协调层加入混音台并叠加播放（addSoundToMixer 内部双写两个 Store，
+// 走 audioStore.playMultiple 混音模式——多音效共存互不打断，点击同时满足用户手势要求）
 function togglePlay(sound) {
-  if (playingId.value === sound.id) {
-    playingId.value = null
-    console.log('暂停了:', sound.name)
-    // 调用音频引擎暂停写死的测试音频
-    audio.pause(audio.TEST_URL)
-  } else {
-    playingId.value = sound.id
-    console.log('点击了:', sound.name)
-    // 调用音频引擎播放写死的测试音频（play 为 async，本阶段不 await 也能出声）
-    audio.play(audio.TEST_URL)
-    // ③ 点击时自动加入混音台
-    mixerStore.addSound(sound)
-  }
+  addSoundToMixer(sound)
 }
 </script>
 
@@ -234,5 +211,20 @@ function togglePlay(sound) {
 }
 .play-btn.playing {
   background: #ff4961;
+}
+
+/* 加载中（音频冷解码）：灰底 + 缓慢呼吸提示，避免用户误以为点击无响应 */
+.play-btn.loading {
+  background: #b2bec3;
+  animation: btn-breathing 1.2s ease-in-out infinite;
+}
+@keyframes btn-breathing {
+  0%,
+  100% {
+    opacity: 0.55;
+  }
+  50% {
+    opacity: 1;
+  }
 }
 </style>

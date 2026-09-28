@@ -23,7 +23,7 @@
           <div class="card-head">
             <span class="card-emoji">{{ sound.emoji }}</span>
             <span class="card-name">{{ sound.name }}</span>
-            <button class="remove-btn" @click="mixerStore.removeSound(sound.id)">
+            <button class="remove-btn" @click="removeSoundFromMixer(sound.id)">
               ✕
             </button>
           </div>
@@ -47,11 +47,16 @@
 <script setup>
 import { IonPage, IonHeader, IonToolbar, IonTitle, IonContent, IonRange } from '@ionic/vue'
 import { mixerStore } from '@/store/mixer'
+// 双写协调层：移除音效时同步停止播放；音量滑块经协调层平滑作用于引擎 GainNode
+import { removeSoundFromMixer, setMixerVolume } from '@/store/bridge'
 
-// ④ 滑块 @input 事件：打印音量值
+// ④ 滑块 @input 事件：同步 mixerStore 本地 UI 值 + 经协调层设置真实音频音量
 function onVolumeChange(sound, event) {
   const value = event.detail.value
+  // 更新 mixerStore 本地音量（滑块显示用）
   sound.volume = value
+  // 经协调层写入 audioStore 并由引擎平滑作用于 GainNode（0-100 → 0-1）
+  setMixerVolume(sound.id, value)
   console.log(`${sound.name} 音量值:`, value)
 }
 </script>
