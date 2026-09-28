@@ -14,7 +14,7 @@ import {
   IonRouterOutlet,
 } from '@ionic/vue'
 // 引入底部 Tab 图标
-import { compassOutline, optionsOutline, personOutline } from 'ionicons/icons'
+import { compassOutline, personOutline } from 'ionicons/icons'
 </script>
 
 <template>
@@ -30,12 +30,6 @@ import { compassOutline, optionsOutline, personOutline } from 'ionicons/icons'
         <ion-tab-button tab="explore" href="/tabs/explore">
           <ion-icon :icon="compassOutline" />
           <ion-label>发现</ion-label>
-        </ion-tab-button>
-
-        <!-- 混音台 Tab -->
-        <ion-tab-button tab="mixer" href="/tabs/mixer">
-          <ion-icon :icon="optionsOutline" />
-          <ion-label>混音台</ion-label>
         </ion-tab-button>
 
         <!-- 我的 Tab -->

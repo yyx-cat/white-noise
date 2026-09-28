@@ -7,7 +7,7 @@
     </ion-header>
 
     <ion-content :fullscreen="true">
-      <!-- ① 顶部自动轮播 Banner -->
+      <!-- 顶部自动轮播 Banner -->
       <div class="banner-wrap">
         <swiper
           :modules="swiperModules"
@@ -38,7 +38,7 @@
         </button>
       </div>
 
-      <!-- ② 音效卡片网格 -->
+      <!-- 音效卡片网格 -->
       <div class="card-grid">
         <div
           v-for="sound in filteredSounds"
@@ -60,61 +60,223 @@
         </div>
       </div>
     </ion-content>
+
+    <!-- 遮罩：面板展开时让发现页变暗且不可点 -->
+    <div
+      v-if="showMixer"
+      class="mixer-mask"
+      @click="closeMixer"
+    ></div>
+
+    <!-- 混音台面板 + 迷你条 -->
+       <!-- 混音台面板 + 迷你条：没有音效时整个隐藏 -->
+    <div
+      v-if="mixerStore.sounds.length > 0"
+      class="mixer-sheet"
+      :class="{ open: showMixer }"
+      :style="{ height: sheetHeight + 'px' }"
+    >
+      <!-- 拖拽手柄 -->
+      <div
+        class="sheet-handle"
+        @pointerdown="startDrag"
+        @click="toggleMixer"
+      >
+        <span class="sheet-arrow">{{ showMixer ? '▼' : '▲' }}</span>
+      </div>
+
+            <!-- 迷你条：收起时显示在面板顶部 -->
+      <div v-if="!showMixer && mixerStore.sounds.length" class="mini-bar">
+        <span class="mini-text">
+          🎵 混音器 ({{ mixerStore.sounds.length }}个音效)
+        </span>
+      </div>
+
+      <!-- 面板内容：展开时显示 -->
+      <div v-if="showMixer" class="sheet-body">
+        <div v-if="mixerStore.sounds.length === 0" class="sheet-empty">
+          还没有音效，去点几个吧
+        </div>
+        <div v-else class="sheet-list">
+          <div
+            v-for="sound in mixerStore.sounds"
+            :key="sound.id"
+            class="sheet-card"
+          >
+            <div class="sheet-card-head">
+              <span class="sheet-emoji">{{ sound.emoji }}</span>
+              <span class="sheet-name">{{ sound.name }}</span>
+              <button
+                class="sheet-remove"
+                @click="removeSoundFromMixer(sound.id)"
+              >
+                ✕
+              </button>
+            </div>
+            <ion-range
+              :min="0"
+              :max="100"
+              :value="sound.volume"
+              @ionInput="onVolumeChange(sound, $event)"
+            >
+              <span slot="start">🔈</span>
+              <span slot="end">🔊</span>
+            </ion-range>
+          </div>
+        </div>
+      </div>
+    </div>
   </ion-page>
 </template>
 
 <script setup>
-import { ref, computed } from 'vue'
-import { IonPage, IonHeader, IonToolbar, IonTitle, IonContent } from '@ionic/vue'
-// 引入 Swiper 组件和需要的模块
+import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { IonPage, IonHeader, IonToolbar, IonTitle, IonContent, IonRange } from '@ionic/vue'
 import { Swiper, SwiperSlide } from 'swiper/vue'
 import { Autoplay, Pagination } from 'swiper/modules'
 import 'swiper/css'
 import 'swiper/css/pagination'
-// 音效元数据唯一来源：卡片列表与分类均从此取，不再本地写死
 import { sounds, getCategories } from '@/data/sounds'
-// 双写协调层：UI 只调用 bridge，由它统一双写 audioStore / mixerStore 并驱动音频引擎
-import { addSoundToMixer, removeSoundFromMixer } from '@/store/bridge'
-// Pinia 音频状态：播放中判断（图标切换）全部以此为准
+import { addSoundToMixer, removeSoundFromMixer, setMixerVolume } from '@/store/bridge'
+import { mixerStore } from '@/store/mixer'
 import { useAudioStore } from '@/store/audio'
 
-// 音频状态 Store 实例（与 categories 处于同一层作用域）
 const audioStore = useAudioStore()
 
-// 注册 Swiper 模块
 const swiperModules = [Autoplay, Pagination]
 
-// 顶部轮播 Banner 数据
 const banners = [
   { emoji: '🌧️', title: '雨声助眠', bg: 'linear-gradient(135deg, #667eea, #764ba2)' },
   { emoji: '🌊', title: '海浪白噪音', bg: 'linear-gradient(135deg, #2193b0, #6dd5ed)' },
   { emoji: '🔥', title: '篝火噼啪', bg: 'linear-gradient(135deg, #f2994a, #f2c94c)' },
 ]
 
-// 分类 Tab（从 sounds.js 元数据动态生成，"全部"固定在最前）
 const categories = getCategories()
 const activeCategory = ref('全部')
 
-// 根据分类筛选卡片
 const filteredSounds = computed(() => {
   if (activeCategory.value === '全部') return sounds
   return sounds.filter((s) => s.category === activeCategory.value)
 })
 
-// ④ 点击按钮：经协调层加入混音台并叠加播放（addSoundToMixer 内部双写两个 Store，
-// 走 audioStore.playMultiple 混音模式——多音效共存互不打断，点击同时满足用户手势要求）
-function togglePlay(sound) {
-  if (audioStore.isPlaying(sound.id)) {
-    // 正在播 → 停止播放并从混音台移除
-    removeSoundFromMixer(sound.id)
-  } else if (audioStore.isPaused(sound.id)) {
-    // 已暂停 → 直接从混音台移除
-    removeSoundFromMixer(sound.id)
+// ===== 混音台面板状态 =====
+const showMixer = ref(false)
+// 面板高度（px）
+const sheetHeight = ref(0)
+// 收起时露出的迷你条高度
+const MINI_HEIGHT = 56
+// 展开时的比例（屏幕高度的百分比）
+const EXPAND_RATIO = 0.5
+
+// 计算展开高度
+function getExpandHeight() {
+  return window.innerHeight * EXPAND_RATIO
+}
+
+// 初始化：收起状态
+function initSheet() {
+  sheetHeight.value = MINI_HEIGHT
+}
+
+// 打开面板
+function openMixer() {
+  showMixer.value = true
+  sheetHeight.value = getExpandHeight()
+}
+
+// 关闭面板
+function closeMixer() {
+  showMixer.value = false
+  sheetHeight.value = MINI_HEIGHT
+}
+
+// 切换
+function toggleMixer() {
+  if (showMixer.value) {
+    closeMixer()
   } else {
-    // 没播过 → 加入混音台并开始播
-    addSoundToMixer(sound)
+    openMixer()
   }
 }
+
+// ===== 拖拽 =====
+let dragging = false
+let startY = 0
+let startHeight = 0
+
+function startDrag(e) {
+  dragging = true
+  startY = e.clientY
+  startHeight = sheetHeight.value
+  // 如果收起状态下拖动，先展开
+  if (!showMixer.value) {
+    showMixer.value = true
+  }
+  window.addEventListener('pointermove', onDrag)
+  window.addEventListener('pointerup', stopDrag)
+}
+
+function onDrag(e) {
+  if (!dragging) return
+  const delta = startY - e.clientY // 往上拖是正数
+  let newHeight = startHeight + delta
+  const maxHeight = window.innerHeight * 0.9
+  const minHeight = MINI_HEIGHT
+  newHeight = Math.max(minHeight, Math.min(maxHeight, newHeight))
+  sheetHeight.value = newHeight
+}
+
+function stopDrag() {
+  dragging = false
+  window.removeEventListener('pointermove', onDrag)
+  window.removeEventListener('pointerup', stopDrag)
+  const h = sheetHeight.value
+  const closeThreshold = window.innerHeight * 0.3
+  const halfHeight = window.innerHeight * 0.5
+  const fullHeight = window.innerHeight * 0.9
+  if (h < closeThreshold) {
+    // 低于 30% → 收起
+    closeMixer()
+  } else if (h < halfHeight) {
+    // 30% ~ 50% → 吸附到 50%
+    sheetHeight.value = halfHeight
+  } else {
+    // 高于 50% → 吸附到 90%
+    sheetHeight.value = fullHeight
+  }
+}
+
+// ===== 播放逻辑 =====
+function togglePlay(sound) {
+  if (audioStore.isPlaying(sound.id)) {
+    // 正在播 → 只暂停这一个
+    removeSoundFromMixer(sound.id)
+  } else if (audioStore.isPaused(sound.id)) {
+    removeSoundFromMixer(sound.id)
+    } else {
+    addSoundToMixer(sound)
+    // 每次新加入音效时，面板从收起状态开始
+    showMixer.value = false
+    sheetHeight.value = MINI_HEIGHT
+  }
+}
+
+function onVolumeChange(sound, event) {
+  const value = event.detail.value
+  sound.volume = value
+  setMixerVolume(sound.id, value)
+}
+
+// ===== 生命周期 =====
+onMounted(() => {
+  initSheet()
+  window.addEventListener('resize', initSheet)
+})
+onUnmounted(() => {
+  window.removeEventListener('resize', initSheet)
+  window.removeEventListener('pointermove', onDrag)
+  window.removeEventListener('pointerup', stopDrag)
+})
 </script>
 
 <style scoped>
@@ -125,7 +287,6 @@ function togglePlay(sound) {
 .banner-swiper {
   border-radius: 16px;
   overflow: hidden;
-  /* 让分页点显示在图片上方 */
   --swiper-pagination-bottom: 8px;
 }
 .banner-item {
@@ -144,8 +305,6 @@ function togglePlay(sound) {
   font-size: 16px;
   font-weight: 600;
 }
-
-/* 分页点颜色 */
 .banner-swiper :deep(.swiper-pagination-bullet) {
   background: #fff;
   opacity: 0.6;
@@ -154,7 +313,7 @@ function togglePlay(sound) {
   opacity: 1;
 }
 
-/* 分类 Tab 栏 */
+/* 分类 Tab */
 .category-tabs {
   display: flex;
   gap: 8px;
@@ -184,7 +343,7 @@ function togglePlay(sound) {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
   gap: 12px;
-  padding: 0 16px 24px;
+  padding: 0 16px 120px;
 }
 .sound-card {
   background: #fff;
@@ -203,8 +362,6 @@ function togglePlay(sound) {
   font-size: 14px;
   color: #333;
 }
-
-/* 播放/暂停按钮 */
 .play-btn {
   margin-top: 12px;
   width: 40px;
@@ -221,19 +378,114 @@ function togglePlay(sound) {
 .play-btn.playing {
   background: #ff4961;
 }
-
-/* 加载中（音频冷解码）：灰底 + 缓慢呼吸提示，避免用户误以为点击无响应 */
 .play-btn.loading {
   background: #b2bec3;
   animation: btn-breathing 1.2s ease-in-out infinite;
 }
 @keyframes btn-breathing {
-  0%,
-  100% {
-    opacity: 0.55;
-  }
-  50% {
-    opacity: 1;
-  }
+  0%, 100% { opacity: 0.55; }
+  50% { opacity: 1; }
+}
+
+/* ===== 遮罩 ===== */
+.mixer-mask {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.4);
+  z-index: 1000;
+}
+
+/* ===== 混音台面板 ===== */
+.mixer-sheet {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: #fff;
+  border-radius: 16px 16px 0 0;
+  box-shadow: 0 -4px 16px rgba(0, 0, 0, 0.15);
+  z-index: 1001;
+  transition: height 0.25s ease, transform 0.25s ease;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  /* 不展开时，只有迷你条高度 */
+  height: 56px;
+}
+.mixer-sheet.open {
+  /* 高度由 JS 控制 */
+}
+
+/* 拖拽手柄 */
+.sheet-handle {
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: grab;
+  touch-action: none;
+  flex-shrink: 0;
+}
+.sheet-handle:active {
+  cursor: grabbing;
+}
+.sheet-arrow {
+  font-size: 12px;
+  color: #999;
+}
+
+/* 迷你条 */
+.mini-bar {
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 16px;
+  flex-shrink: 0;
+}
+.mini-text {
+  font-size: 14px;
+  color: #333;
+}
+
+/* 面板内容 */
+.sheet-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0 16px 24px;
+}
+.sheet-empty {
+  padding: 40px;
+  text-align: center;
+  color: #999;
+}
+.sheet-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.sheet-card {
+  background: #f7f7f7;
+  border-radius: 12px;
+  padding: 12px;
+}
+.sheet-card-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.sheet-emoji {
+  font-size: 24px;
+}
+.sheet-name {
+  flex: 1;
+  font-size: 15px;
+  font-weight: 500;
+}
+.sheet-remove {
+  border: none;
+  background: transparent;
+  color: #999;
+  font-size: 14px;
 }
 </style>
