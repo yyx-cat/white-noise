@@ -1,6 +1,7 @@
 // 路由配置模块：负责创建应用的路由实例并定义底部 4 个 Tab 的路由表
 import { createRouter, createWebHistory } from '@ionic/vue-router'
 import ExplorePage from '@/view/ExplorePage.vue'
+import TimerPage from '@/view/TimerPage.vue'
 import ProfilePage from '@/view/ProfilePage.vue'
 import TabsPage from '@/view/TabsPage.vue'
 
@@ -28,6 +29,10 @@ export function createAppRouter() {
         {
           path: 'explore',
           component: ExplorePage,
+        },
+                {
+          path: 'timer',
+          component: TimerPage,
         },
         {
           path: 'profile',
