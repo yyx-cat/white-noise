@@ -237,9 +237,9 @@ const themeOptions = [
 // 背景选项：value 要和 src/assets/wallpapers/ 里的文件名一致（不带 .jpg）
 const bgOptions = [
   { value: 'none', label: '默认' },
-  { value: '小孩', label: '小孩' },
-  { value: '星星', label: '星星' },
-  { value: '绿色', label: '绿色' },
+  { value: '苹果', label: '苹果' },
+  { value: '海洋', label: '海洋' },
+  { value: '渐变', label: '渐变' },
 ]
 
 const colorOptions = [
