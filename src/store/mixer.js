@@ -25,4 +25,10 @@ export const mixerStore = reactive({
   removeSound(id) {
     this.sounds = this.sounds.filter((s) => s.id !== id)
   },
+
+    // 设置某个音效的音量（0-100）
+  setVolume(id, volume) {
+    const s = this.sounds.find((s) => s.id === id)
+    if (s) s.volume = volume
+  },
 })

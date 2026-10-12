@@ -61,38 +61,26 @@
       </div>
     </ion-content>
 
-    <!-- 遮罩：面板展开时让发现页变暗且不可点 -->
-    <div
-      v-if="showMixer"
-      class="mixer-mask"
-      @click="closeMixer"
-    ></div>
+    <!-- 遮罩 -->
+    <div v-if="showMixer" class="mixer-mask" @click="closeMixer"></div>
 
     <!-- 混音台面板 + 迷你条 -->
-       <!-- 混音台面板 + 迷你条：没有音效时整个隐藏 -->
     <div
       v-if="mixerStore.sounds.length > 0"
       class="mixer-sheet"
       :class="{ open: showMixer }"
       :style="{ height: sheetHeight + 'px' }"
     >
-      <!-- 拖拽手柄 -->
-      <div
-        class="sheet-handle"
-        @pointerdown="startDrag"
-        @click="toggleMixer"
-      >
+      <div class="sheet-handle" @pointerdown="startDrag" @click="toggleMixer">
         <span class="sheet-arrow">{{ showMixer ? '▼' : '▲' }}</span>
       </div>
 
-            <!-- 迷你条：收起时显示在面板顶部 -->
       <div v-if="!showMixer && mixerStore.sounds.length" class="mini-bar">
         <span class="mini-text">
           🎵 混音器 ({{ mixerStore.sounds.length }}个音效)
         </span>
       </div>
 
-      <!-- 面板内容：展开时显示 -->
       <div v-if="showMixer" class="sheet-body">
         <div v-if="mixerStore.sounds.length === 0" class="sheet-empty">
           还没有音效，去点几个吧
@@ -106,12 +94,7 @@
             <div class="sheet-card-head">
               <span class="sheet-emoji">{{ sound.emoji }}</span>
               <span class="sheet-name">{{ sound.name }}</span>
-              <button
-                class="sheet-remove"
-                @click="removeSoundFromMixer(sound.id)"
-              >
-                ✕
-              </button>
+              <button class="sheet-remove" @click="removeSoundFromMixer(sound.id)">✕</button>
             </div>
             <ion-range
               :min="0"
@@ -123,6 +106,65 @@
               <span slot="end">🔊</span>
             </ion-range>
           </div>
+        </div>
+
+        <button
+          class="stop-all-btn"
+          :class="{ playing: !anyPlaying }"
+          @click="toggleAll"
+        >
+          {{ anyPlaying ? '⏹ 全部停止' : '▶ 全部播放' }}
+        </button>
+
+        <button class="save-preset-btn" @click="saveAsPreset">
+          💾 保存为预设
+        </button>
+
+        <button class="clear-all-btn" @click="clearAll">
+          🗑 清空混音台
+        </button>
+      </div>
+    </div>
+
+    <!-- 保存预设弹窗 -->
+    <div v-if="showSaveDialog" class="save-dialog-mask" @click="showSaveDialog = false">
+      <div class="save-dialog" @click.stop>
+        <div class="dialog-title">保存为预设</div>
+
+        <input
+          v-model="presetName"
+          class="dialog-input"
+          placeholder="预设名称"
+        />
+
+        <div class="dialog-label">图标</div>
+        <div class="emoji-list">
+          <button
+            v-for="e in emojiOptions"
+            :key="e"
+            class="emoji-item"
+            :class="{ active: presetEmoji === e }"
+            @click="presetEmoji = e"
+          >
+            {{ e }}
+          </button>
+        </div>
+
+        <div class="dialog-label">颜色</div>
+        <div class="color-list">
+          <button
+            v-for="c in presetColors"
+            :key="c"
+            class="color-item"
+            :class="{ active: presetColor === c }"
+            :style="{ background: c }"
+            @click="presetColor = c"
+          ></button>
+        </div>
+
+        <div class="dialog-actions">
+          <button class="dialog-cancel" @click="showSaveDialog = false">取消</button>
+          <button class="dialog-confirm" @click="confirmSave">保存</button>
         </div>
       </div>
     </div>
@@ -137,12 +179,18 @@ import { Autoplay, Pagination } from 'swiper/modules'
 import 'swiper/css'
 import 'swiper/css/pagination'
 import { sounds, getCategories } from '@/data/sounds'
-import { addSoundToMixer, removeSoundFromMixer, setMixerVolume } from '@/store/bridge'
+import {
+  addSoundToMixer,
+  removeSoundFromMixer,
+  setMixerVolume,
+  stopAllMixerAudio,
+  toggleMixerPlay,
+} from '@/store/bridge'
 import { mixerStore } from '@/store/mixer'
 import { useAudioStore } from '@/store/audio'
+import { presetStore } from '@/store/presets'
 
 const audioStore = useAudioStore()
-
 const swiperModules = [Autoplay, Pagination]
 
 const banners = [
@@ -159,38 +207,34 @@ const filteredSounds = computed(() => {
   return sounds.filter((s) => s.category === activeCategory.value)
 })
 
+const anyPlaying = computed(() => {
+  return mixerStore.sounds.some((s) => audioStore.isPlaying(s.id))
+})
+
 // ===== 混音台面板状态 =====
 const showMixer = ref(false)
-// 面板高度（px）
 const sheetHeight = ref(0)
-// 收起时露出的迷你条高度
 const MINI_HEIGHT = 56
-// 展开时的比例（屏幕高度的百分比）
 const EXPAND_RATIO = 0.5
 
-// 计算展开高度
 function getExpandHeight() {
   return window.innerHeight * EXPAND_RATIO
 }
 
-// 初始化：收起状态
 function initSheet() {
   sheetHeight.value = MINI_HEIGHT
 }
 
-// 打开面板
 function openMixer() {
   showMixer.value = true
   sheetHeight.value = getExpandHeight()
 }
 
-// 关闭面板
 function closeMixer() {
   showMixer.value = false
   sheetHeight.value = MINI_HEIGHT
 }
 
-// 切换
 function toggleMixer() {
   if (showMixer.value) {
     closeMixer()
@@ -208,7 +252,6 @@ function startDrag(e) {
   dragging = true
   startY = e.clientY
   startHeight = sheetHeight.value
-  // 如果收起状态下拖动，先展开
   if (!showMixer.value) {
     showMixer.value = true
   }
@@ -218,7 +261,7 @@ function startDrag(e) {
 
 function onDrag(e) {
   if (!dragging) return
-  const delta = startY - e.clientY // 往上拖是正数
+  const delta = startY - e.clientY
   let newHeight = startHeight + delta
   const maxHeight = window.innerHeight * 0.9
   const minHeight = MINI_HEIGHT
@@ -235,13 +278,10 @@ function stopDrag() {
   const halfHeight = window.innerHeight * 0.5
   const fullHeight = window.innerHeight * 0.9
   if (h < closeThreshold) {
-    // 低于 30% → 收起
     closeMixer()
   } else if (h < halfHeight) {
-    // 30% ~ 50% → 吸附到 50%
     sheetHeight.value = halfHeight
   } else {
-    // 高于 50% → 吸附到 90%
     sheetHeight.value = fullHeight
   }
 }
@@ -249,13 +289,11 @@ function stopDrag() {
 // ===== 播放逻辑 =====
 function togglePlay(sound) {
   if (audioStore.isPlaying(sound.id)) {
-    // 正在播 → 只暂停这一个
     removeSoundFromMixer(sound.id)
   } else if (audioStore.isPaused(sound.id)) {
     removeSoundFromMixer(sound.id)
-    } else {
+  } else {
     addSoundToMixer(sound)
-    // 每次新加入音效时，面板从收起状态开始
     showMixer.value = false
     sheetHeight.value = MINI_HEIGHT
   }
@@ -267,7 +305,64 @@ function onVolumeChange(sound, event) {
   setMixerVolume(sound.id, value)
 }
 
-// ===== 生命周期 =====
+// ===== 全部停止 / 全部播放 =====
+function toggleAll() {
+  if (anyPlaying.value) {
+    stopAllMixerAudio()
+    console.log('已停止全部声音')
+  } else {
+    mixerStore.sounds.forEach((s) => {
+      toggleMixerPlay(s.id)
+    })
+    console.log('已恢复全部声音')
+  }
+}
+
+// ===== 清空混音台 =====
+function clearAll() {
+  if (mixerStore.sounds.length === 0) return
+  const ok = confirm('确定清空混音台里所有音效吗？')
+  if (!ok) return
+  // 先停掉全部声音
+  stopAllMixerAudio()
+  // 再逐个从列表移除
+  const ids = mixerStore.sounds.map((s) => s.id)
+  ids.forEach((id) => removeSoundFromMixer(id))
+  // 收起面板
+  closeMixer()
+}
+
+// ===== 保存预设弹窗 =====
+const showSaveDialog = ref(false)
+const presetName = ref('')
+const presetEmoji = ref('🎵')
+const presetColor = ref('#3880ff')
+
+const emojiOptions = ['🎵', '🌙', '💻', '🌧️', '🔥', '🌊', '🧘', '☕', '📖', '🍃']
+const presetColors = ['#3880ff', '#8e44ad', '#2dd36f', '#ff4961', '#ffc409', '#92949c']
+
+function saveAsPreset() {
+  if (mixerStore.sounds.length === 0) {
+    alert('混音台是空的')
+    return
+  }
+  presetName.value = ''
+  presetEmoji.value = '🎵'
+  presetColor.value = '#3880ff'
+  showSaveDialog.value = true
+}
+
+function confirmSave() {
+  const name = presetName.value.trim()
+  if (!name) {
+    alert('请输入预设名称')
+    return
+  }
+  presetStore.savePreset(name, mixerStore.sounds, presetEmoji.value, presetColor.value)
+  showSaveDialog.value = false
+  alert(`已保存预设「${name}」`)
+}
+
 onMounted(() => {
   initSheet()
   window.addEventListener('resize', initSheet)
@@ -280,7 +375,6 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
-/* Banner 容器 */
 .banner-wrap {
   padding: 12px 16px 0;
 }
@@ -313,7 +407,6 @@ onUnmounted(() => {
   opacity: 1;
 }
 
-/* 分类 Tab */
 .category-tabs {
   display: flex;
   gap: 8px;
@@ -327,18 +420,17 @@ onUnmounted(() => {
   flex: 0 0 auto;
   padding: 6px 16px;
   border-radius: 999px;
-  border: 1px solid #ddd;
-  background: #f7f7f7;
+  border: 1px solid var(--app-border);
+  background: var(--app-card);
   font-size: 14px;
-  color: #333;
+  color: var(--app-text);
 }
 .category-tab.active {
-  background: #3880ff;
-  border-color: #3880ff;
+  background: var(--app-primary);
+  border-color: var(--app-primary);
   color: #fff;
 }
 
-/* 卡片网格 */
 .card-grid {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
@@ -346,7 +438,7 @@ onUnmounted(() => {
   padding: 0 16px 120px;
 }
 .sound-card {
-  background: #fff;
+  background: var(--app-card);
   border-radius: 14px;
   padding: 16px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
@@ -360,7 +452,7 @@ onUnmounted(() => {
 .card-name {
   margin-top: 8px;
   font-size: 14px;
-  color: #333;
+  color: var(--app-text);
 }
 .play-btn {
   margin-top: 12px;
@@ -368,7 +460,7 @@ onUnmounted(() => {
   height: 40px;
   border-radius: 50%;
   border: none;
-  background: #3880ff;
+  background: var(--app-primary);
   color: #fff;
   font-size: 16px;
   display: flex;
@@ -387,7 +479,6 @@ onUnmounted(() => {
   50% { opacity: 1; }
 }
 
-/* ===== 遮罩 ===== */
 .mixer-mask {
   position: fixed;
   inset: 0;
@@ -395,13 +486,12 @@ onUnmounted(() => {
   z-index: 1000;
 }
 
-/* ===== 混音台面板 ===== */
 .mixer-sheet {
   position: fixed;
   left: 0;
   right: 0;
   bottom: 0;
-  background: #fff;
+  background: var(--app-card);
   border-radius: 16px 16px 0 0;
   box-shadow: 0 -4px 16px rgba(0, 0, 0, 0.15);
   z-index: 1001;
@@ -409,14 +499,9 @@ onUnmounted(() => {
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  /* 不展开时，只有迷你条高度 */
   height: 56px;
 }
-.mixer-sheet.open {
-  /* 高度由 JS 控制 */
-}
 
-/* 拖拽手柄 */
 .sheet-handle {
   height: 20px;
   display: flex;
@@ -431,10 +516,9 @@ onUnmounted(() => {
 }
 .sheet-arrow {
   font-size: 12px;
-  color: #999;
+  color: var(--app-text-sub);
 }
 
-/* 迷你条 */
 .mini-bar {
   height: 36px;
   display: flex;
@@ -445,10 +529,9 @@ onUnmounted(() => {
 }
 .mini-text {
   font-size: 14px;
-  color: #333;
+  color: var(--app-text);
 }
 
-/* 面板内容 */
 .sheet-body {
   flex: 1;
   overflow-y: auto;
@@ -457,7 +540,7 @@ onUnmounted(() => {
 .sheet-empty {
   padding: 40px;
   text-align: center;
-  color: #999;
+  color: var(--app-text-sub);
 }
 .sheet-list {
   display: flex;
@@ -465,7 +548,7 @@ onUnmounted(() => {
   gap: 12px;
 }
 .sheet-card {
-  background: #f7f7f7;
+  background: var(--app-primary-light);
   border-radius: 12px;
   padding: 12px;
 }
@@ -481,11 +564,144 @@ onUnmounted(() => {
   flex: 1;
   font-size: 15px;
   font-weight: 500;
+  color: var(--app-text);
 }
 .sheet-remove {
   border: none;
   background: transparent;
-  color: #999;
+  color: var(--app-text-sub);
   font-size: 14px;
+}
+
+.stop-all-btn {
+  margin-top: 16px;
+  width: 100%;
+  padding: 12px;
+  border-radius: 12px;
+  border: none;
+  background: #ff4961;
+  color: #fff;
+  font-size: 15px;
+}
+.stop-all-btn.playing {
+  background: #2dd36f;
+}
+
+.save-preset-btn {
+  margin-top: 10px;
+  width: 100%;
+  padding: 12px;
+  border-radius: 12px;
+  border: none;
+  background: var(--app-primary);
+  color: #fff;
+  font-size: 15px;
+}
+
+.clear-all-btn {
+  margin-top: 10px;
+  width: 100%;
+  padding: 12px;
+  border-radius: 12px;
+  border: 1px solid #ff4961;
+  background: transparent;
+  color: #ff4961;
+  font-size: 15px;
+}
+
+/* 保存预设弹窗 */
+.save-dialog-mask {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 3000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.save-dialog {
+  width: 85%;
+  max-width: 360px;
+  background: var(--app-card);
+  border-radius: 16px;
+  padding: 20px;
+}
+.dialog-title {
+  font-size: 17px;
+  font-weight: 600;
+  color: var(--app-text);
+  margin-bottom: 16px;
+  text-align: center;
+}
+.dialog-input {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--app-border);
+  border-radius: 10px;
+  font-size: 15px;
+  margin-bottom: 16px;
+  box-sizing: border-box;
+  background: var(--app-bg);
+  color: var(--app-text);
+}
+.dialog-label {
+  font-size: 13px;
+  color: var(--app-text-sub);
+  margin-bottom: 8px;
+}
+.emoji-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+.emoji-item {
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  border: 1px solid var(--app-border);
+  background: var(--app-bg);
+  font-size: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.emoji-item.active {
+  border-color: var(--app-primary);
+  background: var(--app-primary-light);
+}
+.color-list {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 20px;
+}
+.color-item {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: 2px solid transparent;
+}
+.color-item.active {
+  border-color: var(--app-text);
+}
+.dialog-actions {
+  display: flex;
+  gap: 12px;
+}
+.dialog-cancel,
+.dialog-confirm {
+  flex: 1;
+  padding: 10px;
+  border-radius: 10px;
+  border: none;
+  font-size: 15px;
+}
+.dialog-cancel {
+  background: var(--app-border);
+  color: var(--app-text);
+}
+.dialog-confirm {
+  background: var(--app-primary);
+  color: #fff;
 }
 </style>

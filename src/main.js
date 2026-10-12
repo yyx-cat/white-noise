@@ -7,6 +7,12 @@ import { createPinia } from 'pinia'
 // 引入 Ionic 基础样式（全屏布局与组件样式）
 import '@ionic/vue/css/core.css'
 
+import { watch } from 'vue'
+import { themeStore } from '@/store/theme'
+
+import { useAudioStore } from '@/store/audio'
+import { statsStore } from '@/store/stats'
+
 // 引入全局样式
 import './style.css'
 // 引入根组件
@@ -29,4 +35,41 @@ const app = createApp(App)
 // 路由就绪后再挂载，避免首屏闪烁
 router.isReady().then(() => {
   app.mount('#app')
+  // 统计：监听播放状态，有声音在播就累计秒数
+  const audioStore = useAudioStore()
+  let lastTick = null
+  let statTimer = null
+
+function startStatTimer() {
+  if (statTimer) return
+  lastTick = Date.now()
+  statTimer = setInterval(() => {
+    const now = Date.now()
+    const delta = Math.round((now - lastTick) / 1000)
+    lastTick = now
+    statsStore.addSeconds(delta)
+  }, 1000)
+}
+
+function stopStatTimer() {
+  if (statTimer) {
+    clearInterval(statTimer)
+    statTimer = null
+  }
+  lastTick = null
+}
+
+// 监听 playingIds 变化
+watch(
+  () => audioStore.playingIds.length,
+  (len) => {
+    if (len > 0) {
+      startStatTimer()
+    } else {
+      stopStatTimer()
+    }
+  },
+  { immediate: true }
+)
 })
+themeStore.apply()

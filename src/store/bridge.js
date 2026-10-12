@@ -9,7 +9,7 @@
 import { mixerStore } from './mixer'
 import { useAudioStore } from './audio'
 import { getSoundById } from '@/data/sounds'
-
+import { statsStore } from './stats'
 /**
  * 把音效加入混音台并立即播放（发现页卡片点击走这里）
  * mixerStore 加入列表（已存在则不重复加）+ audioStore.playMultiple 叠加播放（已在播则跳过不打断）
@@ -27,6 +27,7 @@ export function addSoundToMixer(sound) {
   mixerStore.addSound({ id: sound.id, emoji: sound.icon, name: sound.name })
   // 混音模式播放：叠加不打断其他音效
   audioStore.playMultiple([sound.id])
+  statsStore.countSound(sound.id)
 }
 
 /**
@@ -88,4 +89,50 @@ export function stopAllMixerAudio() {
  */
 export function playPreview(soundId) {
   useAudioStore().play(soundId)
+}
+
+/**
+ * 批量恢复预设：清空当前混音台，把预设里的声音重新加入并播放，同时恢复各自音量
+ * 点「我的」页里的预设时走这里
+ * @param {Array} sounds 预设里的声音列表 [{ id, name, emoji, volume }]
+ */
+export function applyPresetToMixer(sounds) {
+  const audioStore = useAudioStore()
+  if (!sounds || sounds.length === 0) return
+
+  // 先清空当前混音台与正在播放的音频
+  audioStore.stopAll()
+  mixerStore.sounds = []
+
+  const ids = []
+  sounds.forEach((s) => {
+    // 元数据校验：查不到就跳过
+    const meta = getSoundById(s.id)
+    if (!meta) {
+      console.warn(`bridge.applyPresetToMixer: 未找到 id 为 ${s.id} 的音效`)
+      return
+    }
+    // 加入 mixerStore（emoji 优先用预设里存的，没有就用元数据的 icon）
+    mixerStore.addSound({
+      id: s.id,
+      emoji: s.emoji || meta.icon,
+      name: s.name || meta.name,
+    })
+    // 恢复音量：mixerStore 存 0-100，audioStore 用 0-1
+    const vol = s.volume ?? 50
+    if (typeof mixerStore.setVolume === 'function') {
+      mixerStore.setVolume(s.id, vol)
+    } else {
+      // 兜底：直接改 sounds 里的 volume 字段
+      const item = mixerStore.sounds.find((x) => x.id === s.id)
+      if (item) item.volume = vol
+    }
+    audioStore.setVolume(s.id, Math.min(100, Math.max(0, vol)) / 100)
+    ids.push(s.id)
+  })
+
+  // 一次性叠加播放全部
+  if (ids.length > 0) {
+    audioStore.playMultiple(ids)
+  }
 }
