@@ -16,6 +16,19 @@
           <div class="progress-fill" :style="{ width: progressPercent + '%' }"></div>
         </div>
 
+        <!-- 快捷预设：15/30/60 分钟一键设置 -->
+        <div class="presets">
+          <button
+            v-for="m in [15, 30, 60]"
+            :key="m"
+            class="preset-btn"
+            :class="{ active: totalSeconds === m * 60 }"
+            @click="applyPreset(m)"
+          >
+            {{ m }} 分钟
+          </button>
+        </div>
+
         <!-- 竖滚轮：小时 + 分钟 -->
         <div class="wheel-wrap">
           <div class="wheel">
@@ -97,19 +110,26 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, nextTick, onUnmounted } from 'vue'
+import { ref, computed, onMounted, nextTick } from 'vue'
 import { IonPage, IonHeader, IonToolbar, IonTitle, IonContent } from '@ionic/vue'
-import { stopAllMixerAudio } from '@/store/bridge'
+// 睡眠定时器单例：倒计时逻辑（结束时间戳防漂移）与归零自动停止音频都在 useTimer 内
+import { useTimer } from '@/composables/useTimer'
+
+// 睡眠定时器（模块级单例）：组件不再自维护 interval，切换 Tab 后倒计时继续
+// 解构重命名：模板与下方逻辑沿用 remaining/running/finished 原名
+const {
+  remainingSeconds: remaining,
+  timerRunning: running,
+  timerFinished: finished,
+  setTimer,
+  startTimer,
+  pauseTimer,
+  resetTimer,
+} = useTimer()
 
 // 选中的小时和分钟
 const selectedHour = ref(0)
 const selectedMinute = ref(15)
-
-// 剩余秒数
-const remaining = ref(selectedHour.value * 3600 + selectedMinute.value * 60)
-const running = ref(false)
-const finished = ref(false)
-let timerId = null
 
 // 专注模式
 const focusMode = ref(false)
@@ -159,44 +179,42 @@ function onMinuteScroll() {
   syncRemaining()
 }
 
-// 没在运行时，同步剩余时间
+// 没在运行时，同步剩余时间（滚轮选择变化即重设时长，待启动状态）
 function syncRemaining() {
   if (running.value) return
-  remaining.value = totalSeconds.value
-  finished.value = false
+  setTimer(totalSeconds.value / 60)
 }
 
-// 开始
-function start() {
+// 快捷预设：点击 15/30/60 分钟一键设置时长并同步滚轮位置
+function applyPreset(minutes) {
+  // 运行中不允许改时长（与滚轮一致的保护）
   if (running.value) return
-  if (remaining.value <= 0) return
-  finished.value = false
-  running.value = true
-  timerId = setInterval(() => {
-    if (remaining.value > 0) {
-      remaining.value--
-    } else {
-      stopTimer()
-      running.value = false
-      finished.value = true
-      stopAllMixerAudio()
-      console.log('倒计时结束，已停止所有音频')
-    }
-  }, 1000)
+  // 同步滚轮选择状态（60 分钟 = 1 时 0 分）
+  selectedHour.value = Math.floor(minutes / 60)
+  selectedMinute.value = minutes % 60
+  setTimer(minutes)
+  // 滚轮位置同步到新选择
+  if (hourListRef.value) {
+    hourListRef.value.scrollTop = selectedHour.value * ITEM_HEIGHT
+  }
+  if (minuteListRef.value) {
+    minuteListRef.value.scrollTop = selectedMinute.value * ITEM_HEIGHT
+  }
 }
 
-// 暂停
+// 开始：倒计时走 useTimer（内部记录结束时间戳防漂移）
+function start() {
+  startTimer()
+}
+
+// 暂停：保留剩余秒数，再次开始从剩余时间续跑
 function pause() {
-  running.value = false
-  stopTimer()
+  pauseTimer()
 }
 
-// 重置
+// 重置：恢复到滚轮当前选择的时长（滚轮变化时已通过 syncRemaining 重设默认）
 function reset() {
-  running.value = false
-  finished.value = false
-  stopTimer()
-  remaining.value = totalSeconds.value
+  resetTimer()
 }
 
 // 进入专注模式
@@ -214,14 +232,6 @@ function exitFocus() {
   pause()
 }
 
-// 清除定时器
-function stopTimer() {
-  if (timerId) {
-    clearInterval(timerId)
-    timerId = null
-  }
-}
-
 onMounted(() => {
   nextTick(() => {
     if (hourListRef.value) {
@@ -230,13 +240,13 @@ onMounted(() => {
     if (minuteListRef.value) {
       minuteListRef.value.scrollTop = selectedMinute.value * ITEM_HEIGHT
     }
-    remaining.value = totalSeconds.value
+    // 初始时长：滚轮默认选择（0 时 15 分）
+    setTimer(totalSeconds.value / 60)
   })
 })
 
-onUnmounted(() => {
-  stopTimer()
-})
+// 说明：定时器是模块级单例，组件卸载（切换 Tab）时不停止——倒计时跨页面继续，
+// 归零时由 useTimer 自动停止全部音频；仅 App 卸载时在 App.vue 中调 disposeTimer() 清理 interval 防泄漏
 </script>
 
 <style scoped>
@@ -269,6 +279,29 @@ onUnmounted(() => {
   height: 100%;
   background: #3880ff;
   transition: width 1s linear;
+}
+
+/* 快捷预设按钮行：15/30/60 分钟一键设置 */
+.presets {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 36px;
+}
+.preset-btn {
+  padding: 10px 22px;
+  border-radius: 999px;
+  border: 1px solid #ddd;
+  background: #f6f6f6;
+  color: #555;
+  font-size: 15px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.preset-btn.active {
+  border-color: #3880ff;
+  background: #3880ff;
+  color: #fff;
+  font-weight: 600;
 }
 
 /* 竖滚轮 */

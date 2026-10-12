@@ -30,6 +30,14 @@ export const useAudioStore = defineStore('audio', {
     errors: {},
     // 正在加载的 soundId 集合（数组）
     loadingIds: [],
+    // 混响开关状态（效果器全局状态，镜像引擎 getFxState）
+    reverbEnabled: false,
+    // 混响强度（UI 口径 0-100，调引擎时除以 100 转 0-1）
+    reverbAmount: 35,
+    // 3D 环绕开关状态
+    surroundEnabled: false,
+    // 3D 环绕速度（UI 口径 0-100，调引擎时除以 50 映射为 0-2 Hz）
+    surroundSpeed: 10,
   }),
 
   getters: {
@@ -204,6 +212,8 @@ export const useAudioStore = defineStore('audio', {
       this.loadingIds.forEach((id) => this.setTrackStopped(id))
       this.currentMode = 'idle'
       this.playerSoundId = null
+      // 引擎侧环绕定时器已被 stopAll 清理，这里同步关闭开关状态（与 reset 一致，防 UI 显示开但环绕已无效）
+      this.surroundEnabled = false
     },
 
     /**
@@ -215,6 +225,47 @@ export const useAudioStore = defineStore('audio', {
       const v = Math.min(1, Math.max(0, value))
       this.volumes[soundId] = v
       engine.setVolume(soundId, v)
+    },
+
+    /**
+     * 切换混响开关（效果器全局状态）：引擎内部先加载脉冲响应挂到 ConvolverNode，
+     * 再通过湿声增益出混响、干声保留；IR 加载失败时保持开关状态不变并记录错误
+     */
+    async toggleReverb() {
+      try {
+        this.reverbEnabled = await engine.toggleReverb()
+      } catch (err) {
+        // 脉冲响应加载/解码失败：开关维持原状，下次再点会自动重试加载
+        console.error('混响开启失败（脉冲响应加载异常）:', err)
+      }
+    },
+
+    /**
+     * 设置混响强度：接收 0-100（UI 滑块口径），内部除以 100 转为 0-1
+     * @param {number} uiValue 强度 0-100
+     */
+    setReverbAmount(uiValue) {
+      const v = Math.min(100, Math.max(0, uiValue))
+      this.reverbAmount = v
+      engine.setReverbAmount(v / 100)
+    },
+
+    /**
+     * 切换 3D 环绕开关：开启时引擎 setInterval 周期推动声像左右往返，
+     * 关闭/停止播放时引擎内部清理定时器，避免定时器泄漏
+     */
+    toggleSurround() {
+      this.surroundEnabled = engine.toggleSurround()
+    },
+
+    /**
+     * 设置 3D 环绕速度：接收 0-100（UI 滑块口径），内部除以 50 映射为 0-2 Hz
+     * @param {number} uiValue 速度 0-100
+     */
+    setSurroundSpeed(uiValue) {
+      const v = Math.min(100, Math.max(0, uiValue))
+      this.surroundSpeed = v
+      engine.setSurroundSpeed(v / 50)
     },
 
     /**
@@ -292,6 +343,8 @@ export const useAudioStore = defineStore('audio', {
       this.trackStates = {}
       this.errors = {}
       this.volumes = {}
+      // stopAll 内部已清理 3D 环绕定时器，这里同步关闭开关状态
+      this.surroundEnabled = false
     },
   },
 })

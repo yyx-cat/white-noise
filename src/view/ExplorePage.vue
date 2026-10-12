@@ -124,6 +124,51 @@
             </ion-range>
           </div>
         </div>
+
+        <!-- 效果器面板：混响 + 3D 环绕（全局开关，作用于所有正在播放的音效） -->
+        <div class="fx-panel">
+          <div class="fx-title">🎛️ 效果器</div>
+          <!-- 混响行：开关按钮 + 强度滑块 -->
+          <div class="fx-row">
+            <button
+              class="fx-toggle"
+              :class="{ on: audioStore.reverbEnabled }"
+              @click="onToggleReverb"
+            >
+              混响 {{ audioStore.reverbEnabled ? '开' : '关' }}
+            </button>
+            <ion-range
+              class="fx-range"
+              :min="0"
+              :max="100"
+              :value="audioStore.reverbAmount"
+              @ionInput="onReverbAmount($event)"
+            >
+              <span slot="start">弱</span>
+              <span slot="end">强</span>
+            </ion-range>
+          </div>
+          <!-- 3D 环绕行：开关按钮 + 速度滑块 -->
+          <div class="fx-row">
+            <button
+              class="fx-toggle"
+              :class="{ on: audioStore.surroundEnabled }"
+              @click="onToggleSurround"
+            >
+              环绕 {{ audioStore.surroundEnabled ? '开' : '关' }}
+            </button>
+            <ion-range
+              class="fx-range"
+              :min="0"
+              :max="100"
+              :value="audioStore.surroundSpeed"
+              @ionInput="onSurroundSpeed($event)"
+            >
+              <span slot="start">慢</span>
+              <span slot="end">快</span>
+            </ion-range>
+          </div>
+        </div>
       </div>
     </div>
   </ion-page>
@@ -138,6 +183,13 @@ import 'swiper/css'
 import 'swiper/css/pagination'
 import { sounds, getCategories } from '@/data/sounds'
 import { addSoundToMixer, removeSoundFromMixer, setMixerVolume } from '@/store/bridge'
+// 效果器桥接函数：混响/3D 环绕为全局效果，经 bridge 调 audioStore 驱动引擎
+import {
+  toggleMixerReverb,
+  setMixerReverbAmount,
+  toggleMixerSurround,
+  setMixerSurroundSpeed,
+} from '@/store/bridge'
 import { mixerStore } from '@/store/mixer'
 import { useAudioStore } from '@/store/audio'
 
@@ -265,6 +317,28 @@ function onVolumeChange(sound, event) {
   const value = event.detail.value
   sound.volume = value
   setMixerVolume(sound.id, value)
+}
+
+// ===== 效果器逻辑（混响 + 3D 环绕，全局开关） =====
+
+// 切换混响开关：经协调层调 audioStore.toggleReverb（引擎内部自动加载脉冲响应）
+function onToggleReverb() {
+  toggleMixerReverb()
+}
+
+// 混响强度滑块 @input：0-100 经协调层写入 Store 并实时作用于湿声增益
+function onReverbAmount(event) {
+  setMixerReverbAmount(event.detail.value)
+}
+
+// 切换 3D 环绕开关：开启时引擎 setInterval 推动声像左右往返，关闭时清理定时器
+function onToggleSurround() {
+  toggleMixerSurround()
+}
+
+// 3D 环绕速度滑块 @input：0-100 经协调层写入 Store 并实时映射为 0-2 Hz
+function onSurroundSpeed(event) {
+  setMixerSurroundSpeed(event.detail.value)
 }
 
 // ===== 生命周期 =====
@@ -487,5 +561,48 @@ onUnmounted(() => {
   background: transparent;
   color: #999;
   font-size: 14px;
+}
+
+/* ===== 效果器面板：与音效卡片同风格 ===== */
+.fx-panel {
+  background: #f7f7f7;
+  border-radius: 12px;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.fx-title {
+  font-size: 15px;
+  font-weight: 500;
+}
+.fx-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+/* 效果器开关按钮：默认浅底、开启高亮 */
+.fx-toggle {
+  flex: 0 0 auto;
+  padding: 6px 14px;
+  border-radius: 999px;
+  border: 1px solid #ddd;
+  background: #fff;
+  font-size: 13px;
+  color: #333;
+}
+.fx-toggle.on {
+  background: #3880ff;
+  border-color: #3880ff;
+  color: #fff;
+}
+/* 效果器滑块占满剩余宽度 */
+.fx-range {
+  flex: 1 1 auto;
+}
+.fx-range span[slot='start'],
+.fx-range span[slot='end'] {
+  font-size: 12px;
+  color: #999;
 }
 </style>

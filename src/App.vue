@@ -5,9 +5,10 @@
 <script setup>
 // 引入 Ionic 应用容器与路由出口组件
 import { IonApp, IonRouterOutlet } from '@ionic/vue'
-// 引入组件生命周期、音频引擎与音频状态 Store
+// 引入组件生命周期、音频引擎、睡眠定时器与音频状态 Store
 import { onMounted, onUnmounted } from 'vue'
 import { useAudio } from '@/composables/useAudio'
+import { useTimer } from '@/composables/useTimer'
 import { useAudioStore } from '@/store/audio'
 
 // 音频引擎实例（模块级单例，路由切换不销毁，仅随 App 卸载销毁）
@@ -27,10 +28,11 @@ onMounted(() => {
   }
 })
 
-// 仅在 App 卸载时停止全部音轨并销毁 AudioContext；
-// 路由切换（如发现页 ↔ 混音台）不触发这里，音频继续播放
+// 仅在 App 卸载时停止全部音轨并销毁 AudioContext，同时清理睡眠定时器 interval 防泄漏；
+// 路由切换（如发现页 ↔ 计时器）不触发这里，音频与倒计时继续
 onUnmounted(() => {
   engine.disposeAudioContext()
+  useTimer().disposeTimer()
 })
 </script>
 

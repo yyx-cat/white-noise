@@ -69,6 +69,50 @@ let engineCallbacks: EngineCallbacks = {
 // 音量平滑过渡时间常数（秒）：拖动滑块/切换音量时避免爆音
 const VOLUME_SMOOTHING = 0.03
 
+// ===== 效果器状态（混响 + 3D 环绕，全局单链路，不按音效拆分） =====
+
+// 主增益节点：所有音轨 GainNode 汇聚点，效果链的输入（ensureFxChain 懒创建）
+let masterGain: GainNode | null = null
+
+// 干声增益节点：直通路径（masterGain → panner → dryGain → destination）
+let dryGain: GainNode | null = null
+
+// 混响卷积节点：接收干湿分叉前的信号做卷积，buffer 为脉冲响应 AudioBuffer
+let convolver: ConvolverNode | null = null
+
+// 湿声增益节点：混响路径音量（masterGain → panner → convolver → wetGain → destination）
+let wetGain: GainNode | null = null
+
+// 立体声声像节点：3D 环绕时周期性改变 pan.value（-1 左 → 1 右），常开（pan=0 时无效果）
+let pannerNode: StereoPannerNode | null = null
+
+// 脉冲响应解码缓存：decodeAudioData 结果，供 ConvolverNode.buffer 复用
+let irBuffer: AudioBuffer | null = null
+
+// 脉冲响应加载 Promise 缓存：并发去重，同一时刻只 fetch 一次，失败后可重试
+let irInflight: Promise<AudioBuffer> | null = null
+
+// 脉冲响应文件路径（效果器资源而非音效，不进 sounds.js 元数据表）
+const IR_URL = '/audio/ReverbIR.wav'
+
+// 混响开关状态：开启时湿声按 reverbAmount 出声，关闭时湿声为 0、干声保留
+let reverbEnabled = false
+
+// 混响强度 0-1（即湿声比例），默认 0.35 可获得明显但不夸张的空间感
+let reverbAmount = 0.35
+
+// 3D 环绕开关状态
+let surroundEnabled = false
+
+// 3D 环绕速度（单位 Hz：每秒左右往返周期数），范围 0.05-2，默认 0.2
+let surroundSpeed = 0.2
+
+// 3D 环绕定时器句柄（setInterval id）：关闭/停止时必须清理，避免定时器泄漏
+let surroundTimer: number | null = null
+
+// 环绕相位（弧度）：pan.value = sin(phase) 实现左右平滑往返
+let surroundPhase = 0
+
 // ===== 音频上下文相关 =====
 
 /**
@@ -144,6 +188,17 @@ async function disposeAudioContext(): Promise<void> {
   bufferCache.clear()
   urlBufferCache.clear()
   urlInflight.clear()
+  // 效果链节点全部断引用置空，效果器状态复位（下次使用时 ensureFxChain 重建）
+  masterGain = null
+  dryGain = null
+  wetGain = null
+  convolver = null
+  pannerNode = null
+  irBuffer = null
+  irInflight = null
+  reverbEnabled = false
+  reverbAmount = 0.35
+  surroundSpeed = 0.2
 }
 
 // ===== 加载相关 =====
@@ -337,8 +392,8 @@ function createSource(soundId: string, offset: number): AudioBufferSourceNode | 
 }
 
 /**
- * 连接音轨链路：source → 该音轨 GainNode → destination
- * GainNode 与 destination 的连接幂等（connected 标志防重复）
+ * 连接音轨链路：source → 该音轨 GainNode → 效果链入口 masterGain → destination
+ * GainNode 与 masterGain 的连接幂等（connected 标志防重复）
  * @param soundId 音效唯一标识
  */
 function connectTrack(soundId: string): void {
@@ -349,9 +404,9 @@ function connectTrack(soundId: string): void {
   }
   // source → GainNode
   track.source.connect(track.gainNode)
-  // GainNode → destination（只连一次）
+  // GainNode → 效果链入口 masterGain（ensureFxChain 懒建；未就绪时直连 destination 兜底），只连一次
   if (!track.connected) {
-    track.gainNode.connect(ctx.destination)
+    track.gainNode.connect(ensureFxChain() ?? ctx.destination)
     track.connected = true
   }
 }
@@ -524,6 +579,204 @@ function disposeAll(): void {
   sourceToSound.clear()
 }
 
+// ===== 效果器相关（混响 + 3D 环绕） =====
+
+/**
+ * 懒创建全局效果链并固定拓扑（幂等，可重复调用）
+ * 拓扑：track.gainNode → masterGain → panner → (dryGain → destination)
+ *                                    ↘ (convolver → wetGain → destination)
+ * panner 常开（pan=0 无效果），开关混响只改 wetGain/dryGain 的 gain，不动拓扑
+ * @returns 返回效果链入口 masterGain；非浏览器环境返回 null
+ */
+function ensureFxChain(): GainNode | null {
+  const ctx = ensureAudioContext()
+  if (!ctx) {
+    return null
+  }
+  // 已建链：直接复用
+  if (masterGain && dryGain && wetGain && convolver && pannerNode) {
+    return masterGain
+  }
+  masterGain = ctx.createGain()
+  pannerNode = ctx.createStereoPanner()
+  dryGain = ctx.createGain()
+  convolver = ctx.createConvolver()
+  wetGain = ctx.createGain()
+  // 干湿分叉前的公共路径：master → panner
+  masterGain.connect(pannerNode)
+  // 干声直通路径：panner → dryGain → destination
+  pannerNode.connect(dryGain)
+  dryGain.connect(ctx.destination)
+  // 湿声混响路径：panner → convolver → wetGain → destination
+  pannerNode.connect(convolver)
+  convolver.connect(wetGain)
+  wetGain.connect(ctx.destination)
+  // 初始状态：干声全量直通、湿声静音（等价于无效果链的原始听感）
+  dryGain.gain.value = 1
+  wetGain.gain.value = 0
+  return masterGain
+}
+
+/**
+ * 加载混响脉冲响应（fetch + decodeAudioData），结果缓存复用
+ * 解码可在 suspended 的 AudioContext 上进行（无需用户手势），并发调用自动去重
+ * @returns 返回脉冲响应 AudioBuffer
+ */
+async function loadImpulseResponse(): Promise<AudioBuffer> {
+  if (irBuffer) {
+    return irBuffer
+  }
+  if (irInflight) {
+    return irInflight
+  }
+  const task = (async () => {
+    const ctx = ensureAudioContext()
+    if (!ctx) {
+      throw new Error('当前环境不支持 Web Audio API，无法加载脉冲响应')
+    }
+    const response = await fetch(IR_URL)
+    if (!response.ok) {
+      throw new Error(`脉冲响应加载失败: ${response.status} ${response.statusText}`)
+    }
+    const arrayBuffer = await response.arrayBuffer()
+    const buf = await decodeAudioDataCompat(ctx, arrayBuffer)
+    irBuffer = buf
+    return buf
+  })()
+  irInflight = task
+  try {
+    return await task
+  } finally {
+    // 无论成败都清理，失败可重试
+    irInflight = null
+  }
+}
+
+/**
+ * 按当前混响状态应用干湿增益（setTargetAtTime 平滑过渡，避免开关瞬间爆音）
+ * 关闭：湿声 0、干声 1（干声保留）；开启：湿声 = reverbAmount、干声轻微衰减补偿响度
+ */
+function applyReverb(): void {
+  const ctx = getAudioContext()
+  if (!ctx || !wetGain || !dryGain) {
+    return
+  }
+  const amount = Math.min(1, Math.max(0, reverbAmount))
+  const wet = reverbEnabled ? amount : 0
+  // 开混响时干声轻微衰减（最多 -25%），补偿干湿叠加带来的响度上升
+  const dry = reverbEnabled ? 1 - amount * 0.25 : 1
+  wetGain.gain.setTargetAtTime(wet, ctx.currentTime, VOLUME_SMOOTHING)
+  dryGain.gain.setTargetAtTime(dry, ctx.currentTime, VOLUME_SMOOTHING)
+}
+
+/**
+ * 切换混响开关：开启前先确保脉冲响应已解码并挂到 ConvolverNode
+ * @returns 返回切换后的混响开关状态
+ */
+async function toggleReverb(): Promise<boolean> {
+  ensureFxChain()
+  const next = !reverbEnabled
+  if (next) {
+    // 开启混响前必须拿到 IR（本地 310KB 文件，加载为毫秒级）
+    const buf = await loadImpulseResponse()
+    if (convolver) {
+      convolver.buffer = buf
+    }
+  }
+  reverbEnabled = next
+  applyReverb()
+  return reverbEnabled
+}
+
+/**
+ * 设置混响强度（开启状态下实时生效）
+ * @param value 强度 0-1，内部 clamp
+ */
+function setReverbAmount(value: number): void {
+  reverbAmount = Math.min(1, Math.max(0, value))
+  if (reverbEnabled) {
+    applyReverb()
+  }
+}
+
+/**
+ * 启动 3D 环绕：setInterval 周期推进相位，pan 用 sin 在 -1~1 间平滑往返（幂等，不重复启动）
+ */
+function startSurround(): void {
+  const ctx = ensureAudioContext()
+  ensureFxChain()
+  if (!ctx || !pannerNode) {
+    return
+  }
+  // 防重复启动：已有定时器时直接返回
+  if (surroundTimer !== null) {
+    return
+  }
+  surroundEnabled = true
+  surroundPhase = 0
+  // 50ms 一 tick：相位按 surroundSpeed（Hz）推进，setTargetAtTime 平滑防 pan 跳变爆音
+  surroundTimer = window.setInterval(() => {
+    surroundPhase += Math.PI * 2 * surroundSpeed * 0.05
+    if (pannerNode) {
+      pannerNode.pan.setTargetAtTime(Math.sin(surroundPhase), ctx.currentTime, 0.02)
+    }
+  }, 50)
+}
+
+/**
+ * 停止 3D 环绕：必须清理 setInterval 避免定时器泄漏，声像平滑回正中
+ */
+function stopSurround(): void {
+  if (surroundTimer !== null) {
+    clearInterval(surroundTimer)
+    surroundTimer = null
+  }
+  surroundEnabled = false
+  const ctx = getAudioContext()
+  if (ctx && pannerNode) {
+    pannerNode.pan.setTargetAtTime(0, ctx.currentTime, 0.02)
+  }
+}
+
+/**
+ * 切换 3D 环绕开关
+ * @returns 返回切换后的环绕开关状态
+ */
+function toggleSurround(): boolean {
+  if (surroundEnabled) {
+    stopSurround()
+  } else {
+    startSurround()
+  }
+  return surroundEnabled
+}
+
+/**
+ * 设置 3D 环绕速度（运行中实时生效，无需重建定时器：tick 每次读取最新速度）
+ * @param value 速度，单位 Hz（每秒左右往返周期数），范围 0.05-2，内部 clamp
+ */
+function setSurroundSpeed(value: number): void {
+  surroundSpeed = Math.min(2, Math.max(0.05, value))
+}
+
+/**
+ * 获取效果器当前状态快照（供 Store 同步到响应式状态）
+ * @returns 返回含混响/环绕状态与参数的普通对象
+ */
+function getFxState(): {
+  reverbEnabled: boolean
+  reverbAmount: number
+  surroundEnabled: boolean
+  surroundSpeed: number
+} {
+  return {
+    reverbEnabled,
+    reverbAmount,
+    surroundEnabled,
+    surroundSpeed,
+  }
+}
+
 // ===== 音量相关 =====
 
 /**
@@ -657,6 +910,8 @@ function stopAll(): void {
   for (const soundId of Array.from(tracks.keys())) {
     stopTrack(soundId)
   }
+  // 停止播放时一并清理 3D 环绕定时器，避免无声音仍在空转泄漏
+  stopSurround()
 }
 
 /**
@@ -749,6 +1004,13 @@ export function useAudio() {
     // 音量
     setVolume,
     getVolume,
+    // 效果器（混响 + 3D 环绕）
+    loadImpulseResponse,
+    toggleReverb,
+    setReverbAmount,
+    toggleSurround,
+    setSurroundSpeed,
+    getFxState,
     // 事件
     setEngineCallbacks,
     // 销毁

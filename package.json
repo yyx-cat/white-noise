@@ -9,6 +9,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@capacitor/preferences": "^8.0.1",
     "@ionic/vue": "^9.0.2",
     "@ionic/vue-router": "^9.0.2",
     "pinia": "^4.0.3",
