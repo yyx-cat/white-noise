@@ -26,16 +26,9 @@ export const mixerStore = reactive({
     this.sounds = this.sounds.filter((s) => s.id !== id)
   },
 
-  // 清空混音台（预设加载前重置列表用）
-  clear() {
-    this.sounds = []
-  },
-
-  // 设置某音效的 UI 音量（0-100，预设恢复音量滑块用）
-  setSoundVolume(id, volume) {
-    const entry = this.sounds.find((s) => s.id === id)
-    if (entry) {
-      entry.volume = volume
-    }
+    // 设置某个音效的音量（0-100）
+  setVolume(id, volume) {
+    const s = this.sounds.find((s) => s.id === id)
+    if (s) s.volume = volume
   },
 })
