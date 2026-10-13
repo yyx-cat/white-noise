@@ -136,3 +136,34 @@ export function applyPresetToMixer(sounds) {
     audioStore.playMultiple(ids)
   }
 }
+
+/**
+ * 切换混响开关（效果器为全局状态，作用于所有正在播放的音效）
+ * 开启时引擎先加载脉冲响应再出湿声，关闭时湿声归 0、干声保留
+ */
+export function toggleMixerReverb() {
+  useAudioStore().toggleReverb()
+}
+
+/**
+ * 设置混响强度（UI 滑块 0-100）
+ * @param {number} uiValue 强度 0-100，内部除以 100 转为 0-1
+ */
+export function setMixerReverbAmount(uiValue) {
+  useAudioStore().setReverbAmount(uiValue)
+}
+
+/**
+ * 切换 3D 环绕开关（开启时声像自动左右往返，关闭时回正中并清理定时器）
+ */
+export function toggleMixerSurround() {
+  useAudioStore().toggleSurround()
+}
+
+/**
+ * 设置 3D 环绕速度（UI 滑块 0-100）
+ * @param {number} uiValue 速度 0-100，内部除以 50 映射为 0-2 Hz
+ */
+export function setMixerSurroundSpeed(uiValue) {
+  useAudioStore().setSurroundSpeed(uiValue)
+}

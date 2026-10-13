@@ -108,6 +108,51 @@
           </div>
         </div>
 
+        <!-- 效果器面板：混响 + 3D 环绕（全局开关，作用于所有正在播放的音效） -->
+        <div class="fx-panel">
+          <div class="fx-title">🎛️ 效果器</div>
+          <!-- 混响行：开关按钮 + 强度滑块 -->
+          <div class="fx-row">
+            <button
+              class="fx-toggle"
+              :class="{ on: audioStore.reverbEnabled }"
+              @click="onToggleReverb"
+            >
+              混响 {{ audioStore.reverbEnabled ? '开' : '关' }}
+            </button>
+            <ion-range
+              class="fx-range"
+              :min="0"
+              :max="100"
+              :value="audioStore.reverbAmount"
+              @ionInput="onReverbAmount($event)"
+            >
+              <span slot="start">弱</span>
+              <span slot="end">强</span>
+            </ion-range>
+          </div>
+          <!-- 3D 环绕行：开关按钮 + 速度滑块 -->
+          <div class="fx-row">
+            <button
+              class="fx-toggle"
+              :class="{ on: audioStore.surroundEnabled }"
+              @click="onToggleSurround"
+            >
+              环绕 {{ audioStore.surroundEnabled ? '开' : '关' }}
+            </button>
+            <ion-range
+              class="fx-range"
+              :min="0"
+              :max="100"
+              :value="audioStore.surroundSpeed"
+              @ionInput="onSurroundSpeed($event)"
+            >
+              <span slot="start">慢</span>
+              <span slot="end">快</span>
+            </ion-range>
+          </div>
+        </div>
+
         <button
           class="stop-all-btn"
           :class="{ playing: !anyPlaying }"
@@ -185,6 +230,10 @@ import {
   setMixerVolume,
   stopAllMixerAudio,
   toggleMixerPlay,
+  toggleMixerReverb,
+  setMixerReverbAmount,
+  toggleMixerSurround,
+  setMixerSurroundSpeed,
 } from '@/store/bridge'
 import { mixerStore } from '@/store/mixer'
 import { useAudioStore } from '@/store/audio'
@@ -303,6 +352,20 @@ function onVolumeChange(sound, event) {
   const value = event.detail.value
   sound.volume = value
   setMixerVolume(sound.id, value)
+}
+
+// ===== 效果器（混响 + 3D 环绕） =====
+function onToggleReverb() {
+  toggleMixerReverb()
+}
+function onReverbAmount(event) {
+  setMixerReverbAmount(event.detail.value)
+}
+function onToggleSurround() {
+  toggleMixerSurround()
+}
+function onSurroundSpeed(event) {
+  setMixerSurroundSpeed(event.detail.value)
 }
 
 // ===== 全部停止 / 全部播放 =====
@@ -571,6 +634,43 @@ onUnmounted(() => {
   background: transparent;
   color: var(--app-text-sub);
   font-size: 14px;
+}
+
+/* 效果器面板（混响 + 3D 环绕，全局开关） */
+.fx-panel {
+  margin-top: 16px;
+  background: var(--app-primary-light);
+  border-radius: 12px;
+  padding: 12px;
+}
+.fx-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--app-text);
+  margin-bottom: 10px;
+}
+.fx-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 8px 0;
+}
+.fx-toggle {
+  flex-shrink: 0;
+  padding: 6px 14px;
+  border-radius: 999px;
+  border: 1px solid var(--app-border);
+  background: var(--app-bg);
+  color: var(--app-text-sub);
+  font-size: 13px;
+}
+.fx-toggle.on {
+  border-color: var(--app-primary);
+  background: var(--app-primary);
+  color: #fff;
+}
+.fx-range {
+  flex: 1;
 }
 
 .stop-all-btn {

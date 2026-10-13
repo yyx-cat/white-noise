@@ -3,6 +3,7 @@
 // 引擎只负责真实发声，不 import 任何 Store；与 Store 的状态同步通过 setEngineCallbacks 注册回调完成
 // 音效元数据（url/loop/默认音量）唯一来源是 sounds.js，引擎按 soundId 查表，不写死业务路径
 import { getSoundById } from '@/data/sounds'
+import { renderSynth, clearSynthCache } from '@/composables/synthEngine'
 
 /**
  * 音轨信息：每个 soundId 一条音轨，包含发声链路与播放状态
@@ -188,6 +189,7 @@ async function disposeAudioContext(): Promise<void> {
   bufferCache.clear()
   urlBufferCache.clear()
   urlInflight.clear()
+  clearSynthCache()
   // 效果链节点全部断引用置空，效果器状态复位（下次使用时 ensureFxChain 重建）
   masterGain = null
   dryGain = null
@@ -223,8 +225,14 @@ async function loadSound(soundId: string): Promise<AudioBuffer> {
     return bufferCache.get(soundId) as AudioBuffer
   }
   const meta = getSoundMeta(soundId)
-  if (!meta || !meta.url) {
+  if (!meta || (!meta.url && !(meta as any).synth)) {
     throw new Error(`sounds.js 中不存在音效 ${soundId} 或缺少 url`)
+  }
+  // 合成音效分支：有 synth 配置时走程序化渲染，不走 fetch
+  if ((meta as any).synth) {
+    const buf = await renderSynth(soundId, (meta as any).synth)
+    bufferCache.set(soundId, buf)
+    return buf
   }
   // 二级缓存：同文件已被其他音效加载过，直接复用（如 thunder 共用 rain 的 Rain.mp3）
   if (urlBufferCache.has(meta.url)) {

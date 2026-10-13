@@ -1,26 +1,7 @@
 <!--
   我的页组件（底部 Tab 第 4 个）
-  当前为骨架占位页面，后续填充个人中心内容
+  预设管理 / 个性化（主题·背景·主色） / 使用统计（今日·本周·连续·7日柱状图·最常用音效）
 -->
-<script setup>
-// 引入 Ionic 页面与内容容器组件
-import { IonPage, IonHeader, IonToolbar, IonTitle, IonContent } from '@ionic/vue'
-</script>
-
-<template>
-  <ion-page>
-    <ion-header>
-      <ion-toolbar>
-        <ion-title>我的</ion-title>
-      </ion-toolbar>
-    </ion-header>
-
-    <ion-content :fullscreen="true">
-      <div class="placeholder">我的内容（待开发）</div>
-    </ion-content>
-  </ion-page>
-</template>
-
 <script setup>
 import { ref, computed } from 'vue'
 import { IonPage, IonHeader, IonToolbar, IonTitle, IonContent } from '@ionic/vue'
@@ -124,19 +105,374 @@ function resetStats() {
 }
 </script>
 
+<template>
+  <ion-page>
+    <ion-header>
+      <ion-toolbar>
+        <ion-title>我的</ion-title>
+      </ion-toolbar>
+    </ion-header>
+
+    <ion-content :fullscreen="true">
+      <div class="profile-page">
+
+        <!-- 预设管理 -->
+        <section class="card">
+          <div class="section-head">
+            <span class="section-title">🎵 我的预设</span>
+            <button class="ghost-btn" @click="createPreset">+ 新建</button>
+          </div>
+
+          <div class="sort-row">
+            <span class="sort-label">排序</span>
+            <select v-model="sortBy" class="sort-select">
+              <option v-for="o in sortOptions" :key="o.value" :value="o.value">{{ o.label }}</option>
+            </select>
+          </div>
+
+          <div v-if="sortedPresets.length === 0" class="empty">还没有预设，去发现页调好混音后回来保存</div>
+          <div v-else class="preset-list">
+            <div
+              v-for="p in sortedPresets"
+              :key="p.id"
+              class="preset-item"
+              @click="openPreset(p)"
+            >
+              <div class="preset-emoji">{{ p.emoji }}</div>
+              <div class="preset-info">
+                <div class="preset-name">{{ p.name }}</div>
+                <div class="preset-meta">{{ p.sounds.length }} 个音效 · {{ p.useCount }} 次使用 · {{ formatDate(p.createdAt) }}</div>
+              </div>
+              <button class="more-btn" @click.stop="openMenu(p)">⋯</button>
+            </div>
+          </div>
+        </section>
+
+        <!-- 个性化 -->
+        <section class="card">
+          <div class="section-title">🎨 个性化</div>
+
+          <div class="row">
+            <div class="row-label">主题</div>
+            <div class="btn-group">
+              <button
+                v-for="o in themeOptions"
+                :key="o.value"
+                class="chip"
+                :class="{ active: themeStore.mode === o.value }"
+                @click="themeStore.setMode(o.value)"
+              >{{ o.label }}</button>
+            </div>
+          </div>
+
+          <div class="row">
+            <div class="row-label">背景</div>
+            <div class="btn-group">
+              <button
+                v-for="o in bgOptions"
+                :key="o.value"
+                class="chip"
+                :class="{ active: themeStore.background === o.value }"
+                @click="themeStore.setBackground(o.value)"
+              >{{ o.label }}</button>
+            </div>
+          </div>
+
+          <div class="row">
+            <div class="row-label">主色</div>
+            <div class="btn-group">
+              <button
+                v-for="c in colorOptions"
+                :key="c.value"
+                class="color-dot"
+                :class="{ active: themeStore.primary === c.value }"
+                :style="{ background: c.value }"
+                @click="themeStore.setPrimary(c.value)"
+              ></button>
+            </div>
+          </div>
+        </section>
+
+        <!-- 使用统计 -->
+        <section class="card">
+          <div class="section-head">
+            <span class="section-title">📊 使用统计</span>
+            <button class="ghost-btn danger" @click="resetStats">清空</button>
+          </div>
+
+          <div class="stats-row">
+            <div class="stat-cell">
+              <div class="stat-num">{{ todayMinutes }}</div>
+              <div class="stat-label">今日(分钟)</div>
+            </div>
+            <div class="stat-cell">
+              <div class="stat-num">{{ weekMinutes }}</div>
+              <div class="stat-label">本周(分钟)</div>
+            </div>
+            <div class="stat-cell">
+              <div class="stat-num">{{ streakDays }}</div>
+              <div class="stat-label">连续(天)</div>
+            </div>
+          </div>
+
+          <div class="chart">
+            <div v-for="(d, i) in last7Days" :key="i" class="bar-col">
+              <div class="bar" :style="{ height: barHeight(d.minutes) + 'px' }"></div>
+              <div class="bar-label">{{ d.label }}</div>
+            </div>
+          </div>
+
+          <div v-if="topSounds.length" class="top-sounds">
+            <div v-for="(t, i) in topSounds" :key="t.id" class="top-item">
+              <span class="rank">{{ i + 1 }}</span>
+              <span class="top-name">{{ t.name }}</span>
+              <span class="top-count">{{ t.count }} 次</span>
+            </div>
+          </div>
+        </section>
+
+      </div>
+    </ion-content>
+  </ion-page>
+</template>
+
 <style scoped>
-/* 页面内容区背景色：黄色，用于验证路由切换 */
-ion-content {
-  --background: #fadb14;
+/* 页面容器 */
+.profile-page {
+  padding: 12px 14px 32px;
 }
 
-/* 占位文本样式 */
-.placeholder {
+/* 卡片 */
+.card {
+  background: #fff;
+  border-radius: 14px;
+  padding: 16px;
+  margin-bottom: 14px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06);
+}
+.section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+.section-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: #333;
+}
+
+/* 幽灵按钮（新建/清空） */
+.ghost-btn {
+  border: 1px solid #3880ff;
+  background: transparent;
+  color: #3880ff;
+  border-radius: 999px;
+  padding: 5px 14px;
+  font-size: 13px;
+  cursor: pointer;
+}
+.ghost-btn.danger {
+  border-color: #ff4961;
+  color: #ff4961;
+}
+
+/* 排序行 */
+.sort-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.sort-label {
+  font-size: 13px;
+  color: #999;
+}
+.sort-select {
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  padding: 5px 8px;
+  font-size: 13px;
+  outline: none;
+  background: #fff;
+}
+
+/* 预设列表 */
+.preset-list {
+  display: flex;
+  flex-direction: column;
+}
+.preset-item {
+  display: flex;
+  align-items: center;
+  padding: 12px 0;
+  border-bottom: 1px solid #f0f0f0;
+  cursor: pointer;
+}
+.preset-item:last-of-type {
+  border-bottom: none;
+}
+.preset-emoji {
+  font-size: 24px;
+  margin-right: 12px;
+}
+.preset-info {
+  flex: 1;
+  min-width: 0;
+}
+.preset-name {
+  font-size: 15px;
+  color: #333;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.preset-meta {
+  font-size: 12px;
+  color: #999;
+  margin-top: 3px;
+}
+.more-btn {
+  border: none;
+  background: transparent;
+  font-size: 20px;
+  color: #999;
+  padding: 4px 10px;
+  cursor: pointer;
+}
+
+/* 个性化行 */
+.row {
+  display: flex;
+  align-items: center;
+  margin: 12px 0;
+}
+.row-label {
+  width: 44px;
+  font-size: 14px;
+  color: #666;
+  flex-shrink: 0;
+}
+.btn-group {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.chip {
+  border: 1px solid #ddd;
+  background: #f7f7f7;
+  color: #555;
+  border-radius: 999px;
+  padding: 6px 14px;
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.chip.active {
+  border-color: #3880ff;
+  background: #3880ff;
+  color: #fff;
+}
+.color-dot {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  cursor: pointer;
+  transition: transform 0.15s;
+}
+.color-dot.active {
+  border-color: #333;
+  transform: scale(1.1);
+}
+
+/* 统计三格 */
+.stats-row {
+  display: flex;
+  margin-bottom: 16px;
+}
+.stat-cell {
+  flex: 1;
+  text-align: center;
+}
+.stat-num {
+  font-size: 24px;
+  font-weight: 600;
+  color: #333;
+  font-variant-numeric: tabular-nums;
+}
+.stat-label {
+  font-size: 12px;
+  color: #999;
+  margin-top: 4px;
+}
+
+/* 7 日柱状图 */
+.chart {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  height: 80px;
+  margin-bottom: 16px;
+  padding: 0 4px;
+}
+.bar-col {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  flex: 1;
+}
+.bar {
+  width: 18px;
+  background: #3880ff;
+  border-radius: 4px 4px 0 0;
+  min-height: 4px;
+}
+.bar-label {
+  font-size: 11px;
+  color: #999;
+  margin-top: 4px;
+}
+
+/* 最常用声音 */
+.top-sounds {
+  border-top: 1px solid #f0f0f0;
+  padding-top: 12px;
+}
+.top-item {
+  display: flex;
+  align-items: center;
+  padding: 6px 0;
+}
+.rank {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: #f0f0f0;
+  color: #666;
+  font-size: 12px;
   display: flex;
   align-items: center;
   justify-content: center;
-  height: 100%;
-  color: #333333;
-  font-size: 20px;
+  margin-right: 10px;
+  flex-shrink: 0;
+}
+.top-name {
+  flex: 1;
+  font-size: 14px;
+  color: #333;
+}
+.top-count {
+  font-size: 12px;
+  color: #999;
+}
+
+/* 空状态 */
+.empty {
+  padding: 20px 0;
+  text-align: center;
+  font-size: 14px;
+  color: #aaa;
 }
 </style>
