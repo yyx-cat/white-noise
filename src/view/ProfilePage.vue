@@ -173,7 +173,7 @@ function resetStats() {
 
         <!-- 个性化 -->
         <section class="card">
-          <div class="section-title">🎨 个性化</div>
+          <div class="section-title" style="margin-bottom: 12px;">🎨 个性化</div>
 
           <div class="row">
             <div class="row-label">主题</div>
@@ -238,15 +238,14 @@ function resetStats() {
             </div>
           </div>
 
-        <div class="chart">
-          <div v-for="(d, i) in last7Days" :key="i" class="bar-col">
-            <!-- 新增的数值显示 -->
-            <div class="bar-value">{{ d.minutes > 0 ? d.minutes : '' }}</div>
-            <!-- 柱子 -->
-            <div class="bar" :style="{ height: barHeight(d.minutes) + 'px' }"></div>
-            <div class="bar-label">{{ d.label }}</div>
+          <!-- 7日柱状图 -->
+          <div class="chart">
+            <div v-for="(d, i) in last7Days" :key="i" class="bar-col">
+              <div class="bar-value">{{ d.minutes > 0 ? d.minutes : '' }}</div>
+              <div class="bar" :style="{ height: barHeight(d.minutes) + 'px' }"></div>
+              <div class="bar-label">{{ d.label }}</div>
+            </div>
           </div>
-        </div>
 
           <div v-if="topSounds.length" class="top-sounds">
             <div v-for="(t, i) in topSounds" :key="t.id" class="top-item">
@@ -260,7 +259,7 @@ function resetStats() {
       </div>
     </ion-content>
     
-        <!-- 预设操作底部菜单 -->
+    <!-- 预设操作底部菜单 -->
     <div v-if="actionPreset" class="action-mask" @click="actionPreset = null">
       <div class="action-sheet" @click.stop>
         <div class="action-title">{{ actionPreset.name }}</div>
@@ -296,11 +295,12 @@ function resetStats() {
 
 /* 卡片 */
 .card {
-  background: #fff;
+  background: var(--app-card);
   border-radius: 14px;
   padding: 16px;
   margin-bottom: 14px;
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06);
+  transition: background-color 0.3s, color 0.3s;
 }
 .section-head {
   display: flex;
@@ -311,14 +311,14 @@ function resetStats() {
 .section-title {
   font-size: 16px;
   font-weight: 600;
-  color: #333;
+  color: var(--app-text);
 }
 
 /* 幽灵按钮（新建/清空） */
 .ghost-btn {
-  border: 1px solid #3880ff;
+  border: 1px solid var(--app-primary);
   background: transparent;
-  color: #3880ff;
+  color: var(--app-primary);
   border-radius: 999px;
   padding: 5px 14px;
   font-size: 13px;
@@ -338,15 +338,16 @@ function resetStats() {
 }
 .sort-label {
   font-size: 13px;
-  color: #999;
+  color: var(--app-text-sub);
 }
 .sort-select {
-  border: 1px solid #ddd;
+  border: 1px solid var(--app-border);
   border-radius: 8px;
   padding: 5px 8px;
   font-size: 13px;
   outline: none;
-  background: #fff;
+  background: var(--app-bg);
+  color: var(--app-text);
 }
 
 /* 预设列表 */
@@ -358,7 +359,7 @@ function resetStats() {
   display: flex;
   align-items: center;
   padding: 12px 0;
-  border-bottom: 1px solid #f0f0f0;
+  border-bottom: 1px solid var(--app-border);
   cursor: pointer;
 }
 .preset-item:last-of-type {
@@ -374,7 +375,7 @@ function resetStats() {
 }
 .preset-name {
   font-size: 15px;
-  color: #333;
+  color: var(--app-text);
   font-weight: 500;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -382,14 +383,14 @@ function resetStats() {
 }
 .preset-meta {
   font-size: 12px;
-  color: #999;
+  color: var(--app-text-sub);
   margin-top: 3px;
 }
 .more-btn {
   border: none;
   background: transparent;
   font-size: 20px;
-  color: #999;
+  color: var(--app-text-sub);
   padding: 4px 10px;
   cursor: pointer;
 }
@@ -403,7 +404,7 @@ function resetStats() {
 .row-label {
   width: 44px;
   font-size: 14px;
-  color: #666;
+  color: var(--app-text-sub);
   flex-shrink: 0;
 }
 .btn-group {
@@ -412,9 +413,9 @@ function resetStats() {
   flex-wrap: wrap;
 }
 .chip {
-  border: 1px solid #ddd;
-  background: #f7f7f7;
-  color: #555;
+  border: 1px solid var(--app-border);
+  background: var(--app-bg);
+  color: var(--app-text-sub);
   border-radius: 999px;
   padding: 6px 14px;
   font-size: 13px;
@@ -422,8 +423,8 @@ function resetStats() {
   transition: all 0.2s;
 }
 .chip.active {
-  border-color: #3880ff;
-  background: #3880ff;
+  border-color: var(--app-primary);
+  background: var(--app-primary);
   color: #fff;
 }
 .color-dot {
@@ -435,7 +436,7 @@ function resetStats() {
   transition: transform 0.15s;
 }
 .color-dot.active {
-  border-color: #333;
+  border-color: var(--app-text);
   transform: scale(1.1);
 }
 
@@ -451,12 +452,12 @@ function resetStats() {
 .stat-num {
   font-size: 24px;
   font-weight: 600;
-  color: #333;
+  color: var(--app-text);
   font-variant-numeric: tabular-nums;
 }
 .stat-label {
   font-size: 12px;
-  color: #999;
+  color: var(--app-text-sub);
   margin-top: 4px;
 }
 
@@ -467,9 +468,9 @@ function resetStats() {
   justify-content: space-between;
   height: 100px;
   padding: 0 8px;
-  margin-bottom: 10px;
+  margin-bottom: 16px;
 }
-.chart-bar-wrap {
+.bar-col {
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -477,27 +478,27 @@ function resetStats() {
   height: 100%;
   justify-content: flex-end;
 }
-.chart-value {
+.bar-value {
   font-size: 11px;
   color: var(--app-text-sub);
   margin-bottom: 4px;
-  height: 14px;
+  height: 14px; 
 }
 .bar {
   width: 18px;
-  background: #3880ff;
+  background: var(--app-primary);
   border-radius: 4px 4px 0 0;
   min-height: 4px;
 }
 .bar-label {
   font-size: 11px;
-  color: #999;
+  color: var(--app-text-sub);
   margin-top: 4px;
 }
 
 /* 最常用声音 */
 .top-sounds {
-  border-top: 1px solid #f0f0f0;
+  border-top: 1px solid var(--app-border);
   padding-top: 12px;
 }
 .top-item {
@@ -509,8 +510,8 @@ function resetStats() {
   width: 20px;
   height: 20px;
   border-radius: 50%;
-  background: #f0f0f0;
-  color: #666;
+  background: var(--app-bg);
+  color: var(--app-text-sub);
   font-size: 12px;
   display: flex;
   align-items: center;
@@ -521,11 +522,11 @@ function resetStats() {
 .top-name {
   flex: 1;
   font-size: 14px;
-  color: #333;
+  color: var(--app-text);
 }
 .top-count {
   font-size: 12px;
-  color: #999;
+  color: var(--app-text-sub);
 }
 
 /* 空状态 */
@@ -533,7 +534,7 @@ function resetStats() {
   padding: 20px 0;
   text-align: center;
   font-size: 14px;
-  color: #aaa;
+  color: var(--app-text-sub);
 }
 
 /* 预设操作底部菜单 */
@@ -549,7 +550,7 @@ function resetStats() {
   width: 100%;
   background: var(--app-card);
   border-radius: 20px 20px 0 0;
-  padding: 16px 20px 30px; /* 底部留白避开导航栏 */
+  padding: 16px 20px 30px;
   display: flex;
   flex-direction: column;
   gap: 10px;
