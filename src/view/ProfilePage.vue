@@ -47,13 +47,36 @@ function openPreset(preset) {
   alert(`已加载预设「${preset.name}」`)
 }
 
+// ===== 预设操作菜单 =====
+const actionPreset = ref(null)   // 当前操作哪个预设
+const renamePreset = ref(null)   // 当前正在重命名的预设
+const newPresetName = ref('')
+
 function openMenu(preset) {
-  const action = prompt(`对「${preset.name}」操作：输入 1 重命名，2 删除`)
-  if (action === '1') {
-    const newName = prompt('新名称', preset.name)
-    if (newName) presetStore.renamePreset(preset.id, newName)
-  } else if (action === '2') {
-    presetStore.deletePreset(preset.id)
+  actionPreset.value = preset
+}
+
+function startRename() {
+  renamePreset.value = actionPreset.value
+  newPresetName.value = actionPreset.value.name
+  actionPreset.value = null
+}
+
+function doRename() {
+  const name = newPresetName.value.trim()
+  if (!name) {
+    alert('名称不能为空')
+    return
+  }
+  presetStore.renamePreset(renamePreset.value.id, name)
+  renamePreset.value = null
+}
+
+function confirmDelete() {
+  const ok = confirm(`确定删除预设「${actionPreset.value.name}」吗？`)
+  if (ok) {
+    presetStore.deletePreset(actionPreset.value.id)
+    actionPreset.value = null
   }
 }
 
@@ -215,12 +238,15 @@ function resetStats() {
             </div>
           </div>
 
-          <div class="chart">
-            <div v-for="(d, i) in last7Days" :key="i" class="bar-col">
-              <div class="bar" :style="{ height: barHeight(d.minutes) + 'px' }"></div>
-              <div class="bar-label">{{ d.label }}</div>
-            </div>
+        <div class="chart">
+          <div v-for="(d, i) in last7Days" :key="i" class="bar-col">
+            <!-- 新增的数值显示 -->
+            <div class="bar-value">{{ d.minutes > 0 ? d.minutes : '' }}</div>
+            <!-- 柱子 -->
+            <div class="bar" :style="{ height: barHeight(d.minutes) + 'px' }"></div>
+            <div class="bar-label">{{ d.label }}</div>
           </div>
+        </div>
 
           <div v-if="topSounds.length" class="top-sounds">
             <div v-for="(t, i) in topSounds" :key="t.id" class="top-item">
@@ -233,6 +259,32 @@ function resetStats() {
 
       </div>
     </ion-content>
+    
+        <!-- 预设操作底部菜单 -->
+    <div v-if="actionPreset" class="action-mask" @click="actionPreset = null">
+      <div class="action-sheet" @click.stop>
+        <div class="action-title">{{ actionPreset.name }}</div>
+        <button class="action-item" @click="startRename">重命名</button>
+        <button class="action-item danger" @click="confirmDelete">删除</button>
+        <button class="action-cancel" @click="actionPreset = null">取消</button>
+      </div>
+    </div>
+
+    <!-- 重命名弹窗 -->
+    <div v-if="renamePreset" class="rename-mask" @click="renamePreset = null">
+      <div class="rename-dialog" @click.stop>
+        <div class="rename-title">重命名预设</div>
+        <input
+          v-model="newPresetName"
+          class="rename-input"
+          placeholder="新名称"
+        />
+        <div class="rename-actions">
+          <button class="rename-cancel" @click="renamePreset = null">取消</button>
+          <button class="rename-confirm" @click="doRename">确定</button>
+        </div>
+      </div>
+    </div>
   </ion-page>
 </template>
 
@@ -413,15 +465,23 @@ function resetStats() {
   display: flex;
   align-items: flex-end;
   justify-content: space-between;
-  height: 80px;
-  margin-bottom: 16px;
-  padding: 0 4px;
+  height: 100px;
+  padding: 0 8px;
+  margin-bottom: 10px;
 }
-.bar-col {
+.chart-bar-wrap {
   display: flex;
   flex-direction: column;
   align-items: center;
   flex: 1;
+  height: 100%;
+  justify-content: flex-end;
+}
+.chart-value {
+  font-size: 11px;
+  color: var(--app-text-sub);
+  margin-bottom: 4px;
+  height: 14px;
 }
 .bar {
   width: 18px;
@@ -474,5 +534,109 @@ function resetStats() {
   text-align: center;
   font-size: 14px;
   color: #aaa;
+}
+
+/* 预设操作底部菜单 */
+.action-mask {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 3000;
+  display: flex;
+  align-items: flex-end;
+}
+.action-sheet {
+  width: 100%;
+  background: var(--app-card);
+  border-radius: 20px 20px 0 0;
+  padding: 16px 20px 30px; /* 底部留白避开导航栏 */
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.action-title {
+  text-align: center;
+  font-size: 13px;
+  color: var(--app-text-sub);
+  margin-bottom: 8px;
+}
+.action-item {
+  width: 100%;
+  padding: 14px;
+  border-radius: 12px;
+  border: none;
+  background: var(--app-bg);
+  color: var(--app-text);
+  font-size: 16px;
+}
+.action-item.danger {
+  color: #ff4961;
+}
+.action-cancel {
+  width: 100%;
+  padding: 14px;
+  border-radius: 12px;
+  border: none;
+  background: var(--app-card);
+  color: var(--app-text);
+  font-size: 16px;
+  margin-top: 8px;
+  border: 1px solid var(--app-border);
+}
+
+/* 重命名弹窗 */
+.rename-mask {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 3100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.rename-dialog {
+  width: 85%;
+  max-width: 340px;
+  background: var(--app-card);
+  border-radius: 16px;
+  padding: 20px;
+}
+.rename-title {
+  font-size: 17px;
+  font-weight: 600;
+  color: var(--app-text);
+  text-align: center;
+  margin-bottom: 16px;
+}
+.rename-input {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--app-border);
+  border-radius: 10px;
+  font-size: 15px;
+  margin-bottom: 20px;
+  box-sizing: border-box;
+  background: var(--app-bg);
+  color: var(--app-text);
+}
+.rename-actions {
+  display: flex;
+  gap: 12px;
+}
+.rename-cancel,
+.rename-confirm {
+  flex: 1;
+  padding: 10px;
+  border-radius: 10px;
+  border: none;
+  font-size: 15px;
+}
+.rename-cancel {
+  background: var(--app-border);
+  color: var(--app-text);
+}
+.rename-confirm {
+  background: var(--app-primary);
+  color: #fff;
 }
 </style>
