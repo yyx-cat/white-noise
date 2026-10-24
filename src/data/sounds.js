@@ -527,15 +527,6 @@ export function getSoundById(id) {
 }
 
 /**
- * 按 id 查找音效的音频地址
- * @param {string} id 音效唯一标识
- * @returns {string|undefined} 对应的音频 url；找不到时返回 undefined
- */
-export function getSoundUrl(id) {
-  return getSoundById(id)?.url
-}
-
-/**
  * 全部分类列表（按 sounds 中的 category 去重，"全部"固定在最前）
  * @returns {string[]} 分类名数组
  */

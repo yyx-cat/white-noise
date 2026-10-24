@@ -49,12 +49,6 @@ let audioContext: AudioContext | null = null
 // 音频缓冲缓存：key 是 soundId（任务口径）；同一音效重复加载直接命中
 const bufferCache = new Map<string, AudioBuffer>()
 
-// 内部按 url 的二级缓存：thunder 与 rain 共用 Rain.mp3 时避免同文件重复 fetch 与解码
-const urlBufferCache = new Map<string, AudioBuffer>()
-
-// url 级加载中去重：同一文件并发加载只发一个请求
-const urlInflight = new Map<string, Promise<AudioBuffer>>()
-
 // 音轨 Map：key 是 soundId，管理每条音轨的 GainNode 与播放状态
 const tracks = new Map<string, Track>()
 
@@ -187,8 +181,6 @@ async function disposeAudioContext(): Promise<void> {
   audioContext = null
   delete (globalThis as any).__audioContext
   bufferCache.clear()
-  urlBufferCache.clear()
-  urlInflight.clear()
   clearSynthCache()
   // 效果链节点全部断引用置空，效果器状态复位（下次使用时 ensureFxChain 重建）
   masterGain = null
@@ -215,79 +207,23 @@ function getSoundMeta(soundId: string) {
 }
 
 /**
- * 加载音效：带 soundId/url 两级缓存查表；未命中才走 loadBuffer 实际请求
+ * 加载音效：soundId 缓存查表，未命中则按元数据的 synth 配置程序化渲染
  * @param soundId 音效唯一标识
- * @returns 返回解码后的 AudioBuffer
+ * @returns 返回渲染后的 AudioBuffer
  */
 async function loadSound(soundId: string): Promise<AudioBuffer> {
-  // 一级缓存：soundId 直接命中
+  // 缓存：soundId 直接命中
   if (bufferCache.has(soundId)) {
     return bufferCache.get(soundId) as AudioBuffer
   }
   const meta = getSoundMeta(soundId)
-  if (!meta || (!meta.url && !(meta as any).synth)) {
-    throw new Error(`sounds.js 中不存在音效 ${soundId} 或缺少 url`)
+  if (!meta || !(meta as any).synth) {
+    throw new Error(`sounds.js 中不存在音效 ${soundId} 或缺少 synth 合成配置`)
   }
-  // 合成音效分支：有 synth 配置时走程序化渲染，不走 fetch
-  if ((meta as any).synth) {
-    const buf = await renderSynth(soundId, (meta as any).synth)
-    bufferCache.set(soundId, buf)
-    return buf
-  }
-  // 二级缓存：同文件已被其他音效加载过，直接复用（如 thunder 共用 rain 的 Rain.mp3）
-  if (urlBufferCache.has(meta.url)) {
-    const buf = urlBufferCache.get(meta.url) as AudioBuffer
-    bufferCache.set(soundId, buf)
-    return buf
-  }
-  // 未命中：实际加载（loadBuffer 内部做 url 级并发去重）
-  return loadBuffer(soundId)
-}
-
-/**
- * 真正执行 fetch + decodeAudioData（统一为 Promise，兼容老版 Safari 回调式实现）
- * 加载成功后同时写入 soundId 缓存与 url 缓存
- * @param soundId 音效唯一标识
- * @returns 返回解码后的 AudioBuffer
- */
-async function loadBuffer(soundId: string): Promise<AudioBuffer> {
-  const meta = getSoundMeta(soundId)
-  if (!meta || !meta.url) {
-    throw new Error(`sounds.js 中不存在音效 ${soundId} 或缺少 url`)
-  }
-  const url = meta.url as string
-  // url 级并发去重：同一文件同时多次请求只发一个 fetch
-  if (urlInflight.has(url)) {
-    const buf = await (urlInflight.get(url) as Promise<AudioBuffer>)
-    bufferCache.set(soundId, buf)
-    return buf
-  }
-
-  // 实际加载闭包（挂到 inflight 实现去重）
-  const task = (async () => {
-    const ctx = ensureAudioContext()
-    if (!ctx) {
-      throw new Error('当前环境不支持 Web Audio API，无法加载音频')
-    }
-    const response = await fetch(url)
-    if (!response.ok) {
-      throw new Error(`音频加载失败: ${response.status} ${response.statusText}`)
-    }
-    const arrayBuffer = await response.arrayBuffer()
-    return decodeAudioDataCompat(ctx, arrayBuffer)
-  })()
-
-  urlInflight.set(url, task)
-  try {
-    const buf = await task
-    // 双写缓存：soundId 级（任务口径）与 url 级（同文件去重）
-    bufferCache.set(soundId, buf)
-    urlBufferCache.set(url, buf)
-    return buf
-  } finally {
-    // 无论成败都清理 inflight，失败可重试
-    urlInflight.delete(url)
-  }
+  // 合成渲染：所有音效均走程序化合成路径（synthEngine 内部按 soundId 去重缓存）
+  const buf = await renderSynth(soundId, (meta as any).synth)
+  bufferCache.set(soundId, buf)
+  return buf
 }
 
 /**
@@ -327,16 +263,6 @@ function decodeAudioDataCompat(
  */
 async function getBuffer(soundId: string): Promise<AudioBuffer> {
   return loadSound(soundId)
-}
-
-/**
- * 查询某音效是否正在加载中
- * @param soundId 音效唯一标识
- * @returns 返回是否加载中
- */
-function isLoading(soundId: string): boolean {
-  const meta = getSoundMeta(soundId)
-  return !!meta && !!meta.url && urlInflight.has(meta.url as string)
 }
 
 // ===== 音轨相关 =====
@@ -996,10 +922,8 @@ export function useAudio() {
     disposeAudioContext,
     // 加载
     loadSound,
-    loadBuffer,
     getBuffer,
     getSoundMeta,
-    isLoading,
     // 播放模式
     play,
     playMultiple,
