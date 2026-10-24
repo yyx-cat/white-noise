@@ -1,0 +1,8 @@
+{
+  "appId": "com.example.whitenoise",
+  "appName": "白噪音",
+  "webDir": "dist",
+  "server": {
+    "androidScheme": "https"
+  }
+}

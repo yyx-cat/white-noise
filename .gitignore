@@ -22,3 +22,8 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Android release 签名（敏感，不提交）
+android/white-noise-release.keystore
+android/key.properties
+*.keystore

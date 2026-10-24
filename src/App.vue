@@ -19,6 +19,16 @@ const audioStore = useAudioStore()
 // 挂载后在浏览器空闲时段静默预热音频（提前 fetch + decode），
 // 避免用户点击音效卡片时才冷解码大文件导致数秒无声；解码在 suspended 上下文也可进行
 onMounted(() => {
+  // 移动端 WebView 一次性解锁：Android/iOS 的 AudioContext 默认挂起，
+  // 绑首次 touchstart/pointerdown 手势确保恢复，与 play() 内部的 resume 构成双保险
+  const unlock = async () => {
+    await audioStore.ensureAudioReady()
+    document.removeEventListener('touchstart', unlock)
+    document.removeEventListener('pointerdown', unlock)
+  }
+  document.addEventListener('touchstart', unlock, { passive: true })
+  document.addEventListener('pointerdown', unlock, { passive: true })
+
   const startPreload = () => audioStore.preload()
   // 优先用 requestIdleCallback 避开首屏渲染；不支持时用短延时兜底
   if (typeof requestIdleCallback === 'function') {
